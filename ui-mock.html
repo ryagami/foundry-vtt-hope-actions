@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hope Actions UI Mock</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .sheet-header { border: 1px solid #ccc; padding: 10px; background: #f9f9f9; }
+        .hope-actions-sheet { margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem; }
+        .button { padding: 5px 10px; background: #007bff; color: white; border: none; cursor: pointer; }
+        .button:hover { background: #0056b3; }
+        .button:disabled { background: #ccc; cursor: not-allowed; }
+        .modal { display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.4); }
+        .modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 400px; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; }
+        .close:hover { color: black; cursor: pointer; }
+        .form-group { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 5px; }
+        input { width: 100%; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Mock Actor Sheet</h1>
+    <div class="sheet-header">
+        <h2>Character Name</h2>
+        <!-- Hope controls will be appended here -->
+    </div>
+
+    <!-- Modal for spending Hope -->
+    <div id="spend-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Spend Hope</h2>
+            <p>How do you want to spend your Hope?</p>
+            <div id="current-hope-display">Current Hope: 3/5</div>
+            <button id="reroll-btn" class="button">Reroll d20 (3 Hope)</button>
+            <div class="form-group">
+                <label>Add to roll:</label>
+                <input id="add-amount" type="number" min="0" value="0" />
+                <button id="add-btn" class="button">Add</button>
+            </div>
+            <button id="done-btn" class="button">Done</button>
+        </div>
+    </div>
+
+    <script>
+        // Mock Foundry objects
+        window.game = {
+            user: { isGM: true },
+            i18n: {
+                localize: (key) => {
+                    const translations = {
+                        'HOPE.SpendNoHope': 'You have no Hope to spend!',
+                        'HOPE.SpendDialogText': 'How do you want to spend your Hope?',
+                        'HOPE.SpendAddLabel': 'Add to roll (+1 per Hope):',
+                        'HOPE.SpendRerollLabel': 'Reroll d20 (costs 3 Hope)',
+                        'HOPE.SpendDialogTitle': 'Spend Hope'
+                    };
+                    return translations[key] || key;
+                }
+            }
+        };
+
+        window.ui = {
+            notifications: {
+                warn: (msg) => alert('Warning: ' + msg)
+            }
+        };
+
+        window.ChatMessage = {
+            create: (data) => console.log('ChatMessage created:', data),
+            getSpeaker: (obj) => obj
+        };
+
+        // Mock actor with dynamic hope
+        let currentHope = 3;
+        let pendingAction = null;
+
+        const mockActor = {
+            name: 'Test Character',
+            isOwner: true,
+            getFlag: (module, flag) => {
+                if (flag === 'hope') return currentHope;
+                if (flag === 'pendingHope') return pendingAction;
+                return null;
+            },
+            setFlag: (module, flag, value) => {
+                if (flag === 'hope') currentHope = value;
+                if (flag === 'pendingHope') pendingAction = value;
+                console.log(`Set flag ${flag} to`, value);
+                updateHopeDisplay();
+                return value;
+            },
+            unsetFlag: (module, flag) => {
+                if (flag === 'pendingHope') pendingAction = null;
+                console.log(`Unset flag ${flag}`);
+                updateHopeDisplay();
+            }
+        };
+
+        // Function to update the hope display
+        function updateHopeDisplay() {
+            const hopeSpan = $('.hope-actions-sheet span:first');
+            const pendingSpan = $('.hope-actions-sheet span:nth-child(2)');
+            hopeSpan.html(`<strong>Hope</strong> ${currentHope}/5`);
+            const pendingText = pendingAction ? `Pending: ${pendingAction.type === 'reroll' ? 'd20 reroll' : `+${pendingAction.amount}`}` : '';
+            pendingSpan.text(pendingText);
+        }
+
+        // Simplified render function
+        function renderActorSheetHopeControls(app, html, data) {
+            const actor = mockActor;
+            if (!actor) return;
+
+            const pending = actor.getFlag('foundry-vtt-hope-actions', 'pendingHope');
+            const pendingText = pending ? `Pending: ${pending.type === 'reroll' ? 'd20 reroll' : `+${pending.amount}`}` : '';
+
+            const control = $(
+                `<div class="hope-actions-sheet">
+                    <span><strong>Hope</strong> ${currentHope}/5</span>
+                    <span>${pendingText}</span>
+                    ${actor.isOwner ? '<button class="hope-actions-use button">Use Hope</button>' : ''}
+                    ${game.user.isGM ? '<button class="hope-actions-award button">Award Hope</button>' : ''}
+                </div>`
+            );
+
+            html.find('.sheet-header').prepend(control);
+
+            control.on('click', '.hope-actions-award', async () => {
+                console.log('Award Hope clicked');
+                // Award 1 hope
+                if (currentHope >= 5) {
+                    // Drop to 1d4
+                    const newValue = Math.floor(Math.random() * 4) + 1;
+                    currentHope = newValue;
+                    console.log(`Hope dropped to ${newValue}`);
+                } else {
+                    currentHope += 1;
+                }
+                updateHopeDisplay();
+                ChatMessage.create({ content: `<p>${actor.name} gains 1 Hope. Current Hope: ${currentHope}/5.</p>` });
+            });
+
+            control.on('click', '.hope-actions-use', async () => {
+                console.log('Use Hope clicked');
+                if (currentHope <= 0) {
+                    return ui.notifications.warn(game.i18n.localize('HOPE.SpendNoHope'));
+                }
+                // Open modal
+                $('#spend-modal').show();
+                $('#current-hope-display').text(`Current Hope: ${currentHope}/5`);
+                $('#reroll-btn').prop('disabled', currentHope < 3);
+            });
+        }
+
+        // Modal interactions
+        $('#spend-modal .close').on('click', () => {
+            $('#spend-modal').hide();
+        });
+
+        $('#reroll-btn').on('click', () => {
+            if (currentHope >= 3) {
+                currentHope -= 3;
+                pendingAction = { type: 'reroll', amount: 3 };
+                mockActor.setFlag('foundry-vtt-hope-actions', 'pendingHope', pendingAction);
+                $('#current-hope-display').text(`Current Hope: ${currentHope}/5`);
+                console.log('Pending reroll');
+            } else {
+                alert('Not enough Hope for reroll');
+            }
+        });
+
+        $('#add-btn').on('click', () => {
+            const amount = parseInt($('#add-amount').val());
+            if (amount > 0 && amount <= currentHope) {
+                currentHope -= amount;
+                pendingAction = { type: 'add', amount };
+                mockActor.setFlag('foundry-vtt-hope-actions', 'pendingHope', pendingAction);
+                $('#current-hope-display').text(`Current Hope: ${currentHope}/5`);
+                console.log(`Pending add ${amount}`);
+            } else {
+                alert('Invalid amount');
+            }
+        });
+
+        $('#done-btn').on('click', () => {
+            $('#spend-modal').hide();
+        });
+
+        // Simulate rendering
+        const mockApp = {};
+        const mockHtml = $('body');
+        const mockData = {};
+        renderActorSheetHopeControls(mockApp, mockHtml, mockData);
+    </script>
+</body>
+</html></content>
+<parameter name="filePath">d:\Users\Stefan\Documents\GitHub\foundry-vtt-hope-actions\ui-mock.html

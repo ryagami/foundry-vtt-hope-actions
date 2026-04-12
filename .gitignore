@@ -1,0 +1,7 @@
+# Foundry VTT module repo ignores
+.DS_Store
+Thumbs.db
+node_modules/
+.vscode/
+.sass-cache/
+*.log

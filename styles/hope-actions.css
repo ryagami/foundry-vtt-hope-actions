@@ -1,0 +1,22 @@
+.hope-actions-sheet {
+  background: rgba(63, 81, 181, 0.1);
+  border: 1px solid rgba(63, 81, 181, 0.25);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.hope-actions-sheet span {
+  color: #1c2654;
+  font-size: 0.95rem;
+}
+
+.hope-actions-sheet button {
+  background: #3f51b5;
+  border-color: #3f51b5;
+  color: white;
+  min-width: 6rem;
+}
+
+.hope-actions-sheet button:hover {
+  background: #344495;
+}
