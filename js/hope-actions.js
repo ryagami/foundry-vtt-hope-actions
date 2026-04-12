@@ -5,6 +5,15 @@ const HOPE_AWARD_TURN_FLAG = 'lastAutoAwardTurn';
 
 Hooks.once('init', () => {
   console.log('Hope Actions | Initializing module');
+
+  game.settings.register(HOPE_MODULE, 'autoTriggerAbilityChecks', {
+    name: `${HOPE_MODULE}.settings.autoTriggerAbilityChecks.name`,
+    hint: `${HOPE_MODULE}.settings.autoTriggerAbilityChecks.hint`,
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false
+  });
 });
 
 Hooks.once('ready', () => {
@@ -32,6 +41,11 @@ Hooks.once('ready', () => {
     }, 'WRAPPER');
 
     libWrapper.register(HOPE_MODULE, 'CONFIG.Actor.documentClass.prototype.rollAbilityTest', async function(wrapped, abilityId, options = {}) {
+      const enabled = game.settings.get(HOPE_MODULE, 'autoTriggerAbilityChecks');
+      if (enabled && this.isOwner && getActorHope(this) > 0 && !this.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG)) {
+        const pendingAction = await promptHopeAction(this, getActorHope(this));
+        if (pendingAction) await this.setFlag(HOPE_MODULE, HOPE_PENDING_FLAG, pendingAction);
+      }
       options = await applyPendingHopeToOptions(this, options);
       return wrapped(abilityId, options);
     }, 'WRAPPER');
@@ -67,12 +81,17 @@ Hooks.once('ready', () => {
     const ItemClass = CONFIG.Item.documentClass;
     if (ActorClass && ItemClass) {
       const originalAbilityTest = ActorClass.prototype.rollAbilityTest;
+      const originalSave = ActorClass.prototype.rollAbilitySave;
       ActorClass.prototype.rollAbilityTest = async function (abilityId, options = {}) {
+        const enabled = game.settings.get(HOPE_MODULE, 'autoTriggerAbilityChecks');
+        if (enabled && this.isOwner && getActorHope(this) > 0 && !this.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG)) {
+          const pendingAction = await promptHopeAction(this, getActorHope(this));
+          if (pendingAction) await this.setFlag(HOPE_MODULE, HOPE_PENDING_FLAG, pendingAction);
+        }
         options = await applyPendingHopeToOptions(this, options);
         return originalAbilityTest.call(this, abilityId, options);
       };
 
-      const originalSave = ActorClass.prototype.rollAbilitySave;
       ActorClass.prototype.rollAbilitySave = async function (abilityId, options = {}) {
         options = await applyPendingHopeToOptions(this, options);
         return originalSave.call(this, abilityId, options);
@@ -90,6 +109,7 @@ Hooks.once('ready', () => {
   }
 
   Hooks.on('renderActorSheet5eCharacter', renderActorSheetHopeControls);
+  Hooks.on('renderChatMessage', renderHopeActionButton);
   Hooks.on('preCreateChatMessage', handleChatMessageHopeAward);
   Hooks.on('preUpdateCombat', handleCombatTurnChange);
 });
@@ -200,14 +220,14 @@ function renderActorSheetHopeControls(app, html, data) {
       <span><strong>Hope</strong> ${currentHope}/5</span>
       <span>${pendingText}</span>
       ${actor.isOwner ? '<button class="hope-actions-use button">Use Hope</button>' : ''}
-      ${game.user.isGM ? '<button class="hope-actions-award button">Award Hope</button>' : ''}
+      ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award button">Award Hope</button>' : ''}
     </div>`
   );
 
   html.find('.sheet-header').prepend(control);
 
   control.on('click', '.hope-actions-award', async () => {
-    await awardActorHope(actor, 1, 'DM award');
+    await awardActorHope(actor, 1, 'award');
   });
 
   control.on('click', '.hope-actions-use', async () => {
@@ -217,62 +237,111 @@ function renderActorSheetHopeControls(app, html, data) {
     const pendingAction = await promptHopeAction(actor, currentHope);
     if (!pendingAction) return;
     await actor.setFlag(HOPE_MODULE, HOPE_PENDING_FLAG, pendingAction);
-    const message = pendingAction.type === 'reroll'
+  });
+}
+
+function renderHopeActionButton(message, html) {
+  const flags = message.data?.flags?.dnd5e?.roll ?? {};
+  if (flags.type !== 'abilityTest') return;
+
+  const actor = ChatMessage.getSpeakerActor(message.data.speaker);
+  if (!actor) return;
+  if (getActorHope(actor) <= 0) return;
+  if (!actor.isOwner && !game.user.isGM) return;
+  if (actor.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG)) return;
+
+  const button = $(`<button class="hope-actions-chat button">${game.i18n.localize('HOPE.ChatButtonLabel')}</button>`);
+  const buttonArea = html.find('.card-buttons').length ? html.find('.card-buttons').first() : html;
+  buttonArea.append(button);
+
+  button.on('click', async () => {
+    const currentHope = getActorHope(actor);
+    if (currentHope <= 0) {
+      return ui.notifications.warn(game.i18n.localize('HOPE.SpendNoHope'));
+    }
+    const pendingAction = await promptHopeAction(actor, currentHope);
+    if (!pendingAction) return;
+    await actor.setFlag(HOPE_MODULE, HOPE_PENDING_FLAG, pendingAction);
+    const messageText = pendingAction.type === 'reroll'
       ? `${actor.name} will spend 3 Hope to reroll the next d20.`
       : `${actor.name} will spend ${pendingAction.amount} Hope to add +${pendingAction.amount} to the next roll.`;
-    ChatMessage.create({speaker: ChatMessage.getSpeaker({actor: actor.id}), content: `<p>${message}</p>`});
+    ChatMessage.create({speaker: ChatMessage.getSpeaker({actor: actor.id}), content: `<p>${messageText}</p>`});
   });
 }
 
 async function promptHopeAction(actor, currentHope) {
   return new Promise(resolve => {
+    let availableHope = currentHope;
+    let pendingAdd = 0;
+
     const content = `
       <p>${game.i18n.localize('HOPE.SpendDialogText')}</p>
-      <p>Current Hope: ${currentHope}/5</p>
+      <p>Current Hope: <span id="hope-current-amount">${availableHope}</span>/5</p>
+      <p>Pending add: <span id="hope-pending-amount">${pendingAdd}</span></p>
       <div class="form-group">
         <label>${game.i18n.localize('HOPE.SpendAddLabel')}</label>
-        <input id="hope-add" type="number" min="0" max="${currentHope}" value="0" style="width: 100%;" />
+        <input id="hope-add" type="number" min="1" max="${availableHope}" value="1" style="width: 100%;" />
       </div>
     `;
 
-    new Dialog({
+    const dialog = new Dialog({
       title: game.i18n.localize('HOPE.SpendDialogTitle'),
       content,
       buttons: {
         reroll: {
           label: 'Reroll',
           callback: async (html) => {
-            if (currentHope < 3) {
+            if (pendingAdd > 0) {
+              ui.notifications.warn('Finish or cancel adding before selecting reroll.');
+              return false;
+            }
+            if (availableHope < 3) {
               ui.notifications.warn('Not enough Hope for a reroll.');
-              return resolve(null);
+              return false;
             }
             await spendActorHope(actor, 3);
             resolve({type: 'reroll', amount: 3});
+            return true;
           }
         },
         add: {
           label: 'Add',
+          close: false,
           callback: async (html) => {
-            const amount = Number(html.find('#hope-add').val()) || 0;
+            const amount = Number(html.find('#hope-add').val()) || 1;
             if (amount <= 0) {
               ui.notifications.warn('Please enter a valid amount.');
-              return resolve(null);
+              return false;
             }
-            if (amount > currentHope) {
+            if (amount > availableHope) {
               ui.notifications.warn('You cannot spend more Hope than you have.');
-              return resolve(null);
+              return false;
             }
+            availableHope -= amount;
+            pendingAdd += amount;
             await spendActorHope(actor, amount);
-            resolve({type: 'add', amount});
+            html.find('#hope-current-amount').text(availableHope);
+            html.find('#hope-pending-amount').text(pendingAdd);
+            html.find('#hope-add').attr('max', availableHope).val(1);
+            return false;
           }
         },
         done: {
           label: 'Done',
-          callback: () => resolve(null)
+          callback: () => {
+            if (pendingAdd > 0) {
+              resolve({type: 'add', amount: pendingAdd});
+            } else {
+              resolve(null);
+            }
+          }
         }
       },
-      default: 'done'
-    }).render(true);
+      default: 'done',
+      close: () => resolve(null)
+    });
+
+    dialog.render(true);
   });
 }
 

@@ -17,6 +17,11 @@ A Foundry VTT module for D&D 5E that tracks a custom resource called Hope.
 
 Place this folder in your Foundry `Data/modules` directory and enable it in the Module Settings.
 
+## Settings
+
+- **Auto-trigger Hope prompt for ability checks**: When enabled, players with non-zero Hope will be prompted to spend it before rolling an ability check.
+- This setting is disabled by default, so Hope only spends when the player chooses to use it manually.
+
 ## Notes
 
 This module adds a small Hope panel to D&D 5E character sheets and hooks into chat messages to award Hope on misses/fails.

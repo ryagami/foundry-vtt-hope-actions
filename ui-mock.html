@@ -38,7 +38,7 @@
             <button id="reroll-btn" class="button">Reroll d20 (3 Hope)</button>
             <div class="form-group">
                 <label>Add to roll:</label>
-                <input id="add-amount" type="number" min="0" value="0" />
+                <input id="add-amount" type="number" min="1" value="1" />
                 <button id="add-btn" class="button">Add</button>
             </div>
             <button id="done-btn" class="button">Done</button>
@@ -122,7 +122,7 @@
                     <span><strong>Hope</strong> ${currentHope}/5</span>
                     <span>${pendingText}</span>
                     ${actor.isOwner ? '<button class="hope-actions-use button">Use Hope</button>' : ''}
-                    ${game.user.isGM ? '<button class="hope-actions-award button">Award Hope</button>' : ''}
+                    ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award button">Award Hope</button>' : ''}
                 </div>`
             );
 
@@ -173,12 +173,17 @@
         });
 
         $('#add-btn').on('click', () => {
-            const amount = parseInt($('#add-amount').val());
+            const amount = parseInt($('#add-amount').val()) || 1;
             if (amount > 0 && amount <= currentHope) {
                 currentHope -= amount;
-                pendingAction = { type: 'add', amount };
+                if (!pendingAction || pendingAction.type !== 'add') {
+                    pendingAction = { type: 'add', amount };
+                } else {
+                    pendingAction.amount += amount;
+                }
                 mockActor.setFlag('foundry-vtt-hope-actions', 'pendingHope', pendingAction);
                 $('#current-hope-display').text(`Current Hope: ${currentHope}/5`);
+                $('#add-amount').attr('max', currentHope).val(1);
                 console.log(`Pending add ${amount}`);
             } else {
                 alert('Invalid amount');

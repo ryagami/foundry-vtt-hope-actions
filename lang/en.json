@@ -18,5 +18,8 @@
   "HOPE.AutoAwardMessage": "{name} gains 1 Hope for a miss or failed save.",
   "HOPE.MaxReachedMessage": "{name} already has 5 Hope. Hope is reset to 1d4.",
   "HOPE.MaxReachedResult": "{name} now has {amount} Hope after overflow.",
-  "HOPE.CurrentValue": "Hope {current}/5"
+  "HOPE.CurrentValue": "Hope {current}/5",
+  "HOPE.Settings.AutoTriggerAbilityChecks.Name": "Auto-trigger Hope prompt for ability checks",
+  "HOPE.Settings.AutoTriggerAbilityChecks.Hint": "When enabled, players with Hope will be prompted to spend it before rolling ability checks.",
+  "HOPE.ChatButtonLabel": "Use Hope"
 }

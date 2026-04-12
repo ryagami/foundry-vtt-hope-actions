@@ -15,7 +15,7 @@
       "path": "lang/en.json"
     }
   ],
-  "url": "",
-  "manifest": "module.json",
-  "download": ""
+  "url": "https://github.com/ryagami/foundry-vtt-hope-actions",
+  "manifest": "https://raw.githubusercontent.com/ryagami/foundry-vtt-hope-actions/master/module.json",
+  "download": "https://github.com/ryagami/foundry-vtt-hope-actions/archive/refs/heads/master.zip"
 }
