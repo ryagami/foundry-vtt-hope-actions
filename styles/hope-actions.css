@@ -77,8 +77,21 @@
   padding: 0.2rem 0.65rem;
 }
 
+.hope-actions-hide-chat.button {
+  border-radius: 6px;
+  border: 1px solid #6f7586;
+  background: linear-gradient(180deg, #4a4f5f 0%, #333846 100%);
+  color: #e7eaf4;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  min-height: 1.8rem;
+  padding: 0.2rem 0.65rem;
+}
+
 .hope-actions-chat.button:hover,
-.hope-actions-award-chat.button:hover {
+.hope-actions-award-chat.button:hover,
+.hope-actions-hide-chat.button:hover {
   filter: brightness(1.08);
 }
 

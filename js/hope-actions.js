@@ -195,9 +195,14 @@ async function renderHopeActionButton(message, html) {
   const rollType = getMessageRollType(message) || normalizeRollType(flags.type);
   const actor = getMessageActor(message);
   const $html = html instanceof jQuery ? html : $(html);
+  const controlsHiddenOnMessage = Boolean(message.flags?.[HOPE_MODULE]?.hideChatButtons);
 
   if (!actor) return;
-  if ($html.find('.hope-actions-chat, .hope-actions-award-chat').length) return;
+  if (controlsHiddenOnMessage) {
+    $html.find('.hope-actions-chat-row').remove();
+    return;
+  }
+  if ($html.find('.hope-actions-chat, .hope-actions-award-chat, .hope-actions-hide-chat').length) return;
   const canManageHope = actor.isOwner || game.user.isGM;
   if (!canManageHope) return;
 
@@ -215,6 +220,17 @@ async function renderHopeActionButton(message, html) {
     rowHost.append(buttonRow);
   }
 
+  const ensureHideButton = () => {
+    if (!buttonRow.children().length) return;
+    if (buttonRow.find('.hope-actions-hide-chat').length) return;
+    const hideButton = $(`<button class="hope-actions-hide-chat button">${game.i18n.localize('HOPE.HideButtonsLabel')}</button>`);
+    buttonRow.append(hideButton);
+    hideButton.on('click', async () => {
+      await message.setFlag(HOPE_MODULE, 'hideChatButtons', true);
+      buttonRow.remove();
+    });
+  };
+
   if (showAwardButtonFailedRolls && canAwardOnMessage && !alreadyAwardedOnMessage) {
     const awardButton = $(`<button class="hope-actions-award-chat button">Award Hope</button>`);
     buttonRow.append(awardButton);
@@ -229,12 +245,30 @@ async function renderHopeActionButton(message, html) {
   }
 
   const supportedHopeRollTypes = ['abilityTest', 'attack', 'save'];
-  if (!supportedHopeRollTypes.includes(rollType)) return;
-  if (message.flags?.[HOPE_MODULE]?.spentHope) return;
-  if (message.flags?.[HOPE_MODULE]?.rerollHopeSpent) return;
-  if (alreadyAwardedOnMessage) return;
-  if (isNaturalOneMessage(message)) return;
-  if (getActorHope(actor) <= 0) return;
+  if (!supportedHopeRollTypes.includes(rollType)) {
+    ensureHideButton();
+    return;
+  }
+  if (message.flags?.[HOPE_MODULE]?.spentHope) {
+    ensureHideButton();
+    return;
+  }
+  if (message.flags?.[HOPE_MODULE]?.rerollHopeSpent) {
+    ensureHideButton();
+    return;
+  }
+  if (alreadyAwardedOnMessage) {
+    ensureHideButton();
+    return;
+  }
+  if (isNaturalOneMessage(message)) {
+    ensureHideButton();
+    return;
+  }
+  if (getActorHope(actor) <= 0) {
+    ensureHideButton();
+    return;
+  }
 
   const button = $(`<button class="hope-actions-chat button">${game.i18n.localize('HOPE.ChatButtonLabel')}</button>`);
   buttonRow.append(button);
@@ -251,6 +285,8 @@ async function renderHopeActionButton(message, html) {
     if (!pendingAction) return;
     await applyHopeActionToMessage(actor, message, pendingAction);
   });
+
+  ensureHideButton();
 }
 
 async function promptHopeAction(actor, currentHope, message) {
