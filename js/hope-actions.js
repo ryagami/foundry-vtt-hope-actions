@@ -38,7 +38,7 @@ Hooks.once('ready', () => {
 
   Hooks.on('renderActorSheet5eCharacter', renderActorSheetHopeControls);
   Hooks.on('renderActorSheet5eCharacter2', renderActorSheetHopeControls);
-  Hooks.on('renderChatMessage', renderHopeActionButton);
+  Hooks.on('dnd5e.renderChatMessage', renderHopeActionButton);
 });
 
 function clampHope(value) {
