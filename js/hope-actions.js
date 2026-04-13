@@ -141,9 +141,13 @@ function renderActorSheetHopeControls(app, html, data) {
     : $root;
   if (!$host.length) return;
 
+  const headerHeight = Number($root.find('.sheet-header').first().outerHeight() ?? 0);
+  const topOffset = Math.max(headerHeight + 6, 8);
+
   // Avoid duplicate injection on partial re-renders.
   $root.find('.hope-actions-sheet').remove();
   $host.addClass('hope-actions-host');
+  $host.css('--hope-sheet-top', `${topOffset}px`);
 
   const currentHope = getActorHope(actor);
   const maxHope = game.settings.get(HOPE_MODULE, 'maxHope');
@@ -151,7 +155,7 @@ function renderActorSheetHopeControls(app, html, data) {
   const control = $(
     `<div class="hope-actions-sheet">
       <span class="hope-actions-value">Hope <strong>${currentHope}</strong>/${maxHope}</span>
-      ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award" type="button" title="Award 1 Hope">+1</button>' : ''}
+      ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award" type="button" title="Award 1 Hope" aria-label="Award 1 Hope">+1</button>' : ''}
     </div>`
   );
 
