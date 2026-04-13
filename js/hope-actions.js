@@ -135,13 +135,11 @@ function renderActorSheetHopeControls(app, html, data) {
     ? (app.element instanceof jQuery ? app.element : $(app.element))
     : $html;
 
-  // Prefer placing next to ability scores. Fallback to header right, then header.
+  // Use header-right area to avoid overlaying custom ability score layouts.
   const $target =
-    $root.find('.ability-scores').first().length
-      ? $root.find('.ability-scores').first()
-      : ($root.find('.sheet-header .right').first().length
-        ? $root.find('.sheet-header .right').first()
-        : $root.find('.sheet-header').first());
+    $root.find('.sheet-header .right').first().length
+      ? $root.find('.sheet-header .right').first()
+      : $root.find('.sheet-header').first();
   if (!$target.length) return;
 
   // Avoid duplicate injection on partial re-renders.
@@ -156,11 +154,7 @@ function renderActorSheetHopeControls(app, html, data) {
     </div>`
   );
 
-  if ($target.is('.ability-scores')) {
-    $target.append(control);
-  } else {
-    $target.prepend(control);
-  }
+  $target.append(control);
 
   control.on('click', '.hope-actions-award', async () => {
     await awardActorHope(actor, 1, 'award');
