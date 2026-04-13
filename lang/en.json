@@ -21,5 +21,8 @@
   "HOPE.CurrentValue": "Hope {current}/5",
   "HOPE.Settings.AutoTriggerAbilityChecks.Name": "Auto-trigger Hope prompt for ability checks",
   "HOPE.Settings.AutoTriggerAbilityChecks.Hint": "When enabled, players with Hope will be prompted to spend it before rolling ability checks.",
-  "HOPE.ChatButtonLabel": "Use Hope"
+  "HOPE.Settings.MaxHope.Name": "Maximum Hope",
+  "HOPE.Settings.MaxHope.Hint": "The maximum amount of Hope a character can have before overflow occurs.",
+  "HOPE.ChatButtonLabel": "Use Hope",
+  "HOPE.AutoTriggerLabel": "Auto-trigger Hope prompts"
 }

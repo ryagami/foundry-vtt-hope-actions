@@ -2,6 +2,7 @@ const HOPE_MODULE = 'foundry-vtt-hope-actions';
 const HOPE_FLAG = 'hope';
 const HOPE_PENDING_FLAG = 'pendingHope';
 const HOPE_AWARD_TURN_FLAG = 'lastAutoAwardTurn';
+const HOPE_AUTO_TRIGGER_FLAG = 'autoTriggerEnabled';
 
 Hooks.once('init', () => {
   console.log('Hope Actions | Initializing module');
@@ -13,6 +14,20 @@ Hooks.once('init', () => {
     config: true,
     type: Boolean,
     default: false
+  });
+
+  game.settings.register(HOPE_MODULE, 'maxHope', {
+    name: `${HOPE_MODULE}.settings.maxHope.name`,
+    hint: `${HOPE_MODULE}.settings.maxHope.hint`,
+    scope: 'world',
+    config: true,
+    type: Number,
+    default: 5,
+    range: {
+      min: 1,
+      max: 20,
+      step: 1
+    }
   });
 });
 
@@ -32,7 +47,12 @@ Hooks.once('ready', () => {
       const result = wrapped(...args);
       if (this.faces === 20 && game[HOPE_MODULE]?.nextD20Reroll) {
         game[HOPE_MODULE].nextD20Reroll = false;
-        const reroll = wrapped(...args);
+        let reroll = wrapped(...args);
+        // Prevent crits: if reroll is 20, set to 19
+        if (reroll.total === 20) {
+          reroll.total = 19;
+          reroll.results[reroll.results.length - 1].result = 19;
+        }
         this.results = reroll.results;
         this._total = reroll._total ?? reroll.total;
         this._evaluated = true;
@@ -41,8 +61,9 @@ Hooks.once('ready', () => {
     }, 'WRAPPER');
 
     libWrapper.register(HOPE_MODULE, 'CONFIG.Actor.documentClass.prototype.rollAbilityTest', async function(wrapped, abilityId, options = {}) {
-      const enabled = game.settings.get(HOPE_MODULE, 'autoTriggerAbilityChecks');
-      if (enabled && this.isOwner && getActorHope(this) > 0 && !this.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG)) {
+      const globalEnabled = game.settings.get(HOPE_MODULE, 'autoTriggerAbilityChecks');
+      const actorEnabled = this.getFlag(HOPE_MODULE, HOPE_AUTO_TRIGGER_FLAG) ?? true; // Default to true if not set
+      if (globalEnabled && actorEnabled && this.isOwner && getActorHope(this) > 0 && !this.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG)) {
         const pendingAction = await promptHopeAction(this, getActorHope(this));
         if (pendingAction) await this.setFlag(HOPE_MODULE, HOPE_PENDING_FLAG, pendingAction);
       }
@@ -69,7 +90,12 @@ Hooks.once('ready', () => {
       const result = originalDieRoll.call(this, options);
       if (this.faces === 20 && game[HOPE_MODULE]?.nextD20Reroll) {
         game[HOPE_MODULE].nextD20Reroll = false;
-        const reroll = originalDieRoll.call(this, options);
+        let reroll = originalDieRoll.call(this, options);
+        // Prevent crits: if reroll is 20, set to 19
+        if (reroll.total === 20) {
+          reroll.total = 19;
+          reroll.results[reroll.results.length - 1].result = 19;
+        }
         this.results = reroll.results;
         this._total = reroll._total ?? reroll.total;
         this._evaluated = true;
@@ -83,8 +109,9 @@ Hooks.once('ready', () => {
       const originalAbilityTest = ActorClass.prototype.rollAbilityTest;
       const originalSave = ActorClass.prototype.rollAbilitySave;
       ActorClass.prototype.rollAbilityTest = async function (abilityId, options = {}) {
-        const enabled = game.settings.get(HOPE_MODULE, 'autoTriggerAbilityChecks');
-        if (enabled && this.isOwner && getActorHope(this) > 0 && !this.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG)) {
+        const globalEnabled = game.settings.get(HOPE_MODULE, 'autoTriggerAbilityChecks');
+        const actorEnabled = this.getFlag(HOPE_MODULE, HOPE_AUTO_TRIGGER_FLAG) ?? true;
+        if (globalEnabled && actorEnabled && this.isOwner && getActorHope(this) > 0 && !this.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG)) {
           const pendingAction = await promptHopeAction(this, getActorHope(this));
           if (pendingAction) await this.setFlag(HOPE_MODULE, HOPE_PENDING_FLAG, pendingAction);
         }
@@ -115,7 +142,8 @@ Hooks.once('ready', () => {
 });
 
 function clampHope(value) {
-  return Math.min(Math.max(Number(value) || 0, 0), 5);
+  const maxHope = game.settings.get(HOPE_MODULE, 'maxHope');
+  return Math.min(Math.max(Number(value) || 0, 0), maxHope);
 }
 
 function getActorHope(actor) {
@@ -142,11 +170,12 @@ async function spendActorHope(actor, amount) {
 
 async function awardActorHope(actor, amount = 1, reason = '') {
   const current = getActorHope(actor);
-  if (current >= 5) {
+  const maxHope = game.settings.get(HOPE_MODULE, 'maxHope');
+  if (current >= maxHope) {
     const roll = await new Roll('1d4').roll({ async: true });
     const newValue = roll.total;
     await setActorHope(actor, newValue);
-    const content = `<p>${actor.name} already had 5 Hope and drops to ${newValue} Hope (${roll.formula}).</p>`;
+    const content = `<p>${actor.name} already had ${maxHope} Hope and drops to ${newValue} Hope (${roll.formula}).</p>`;
     ChatMessage.create({
       speaker: ChatMessage.getSpeaker({actor: actor.id}),
       content
@@ -157,7 +186,7 @@ async function awardActorHope(actor, amount = 1, reason = '') {
   const next = clampHope(current + amount);
   await setActorHope(actor, next);
 
-  const content = `<p>${actor.name} gains ${amount} Hope${reason ? ` (${reason})` : ''}. Current Hope: ${next}/5.</p>`;
+  const content = `<p>${actor.name} gains ${amount} Hope${reason ? ` (${reason})` : ''}. Current Hope: ${next}/${maxHope}.</p>`;
   ChatMessage.create({
     speaker: ChatMessage.getSpeaker({actor: actor.id}),
     content
@@ -207,6 +236,15 @@ async function handleChatMessageHopeAward(message, data, options, userId) {
   await markAwardedThisTurn(actor);
 }
 
+function isNaturalOneMessage(message) {
+  const rolls = message.data?.rolls ?? message.rolls ?? [];
+  return rolls.some(roll =>
+    roll.dice?.some(die =>
+      die.faces === 20 && die.results?.some(r => r.result === 1 && (r.active ?? true))
+    )
+  );
+}
+
 function renderActorSheetHopeControls(app, html, data) {
   const actor = app.actor;
   if (!actor) return;
@@ -214,13 +252,17 @@ function renderActorSheetHopeControls(app, html, data) {
   const currentHope = getActorHope(actor);
   const pending = actor.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG);
   const pendingText = pending ? `Pending: ${pending.type === 'reroll' ? 'd20 reroll' : `+${pending.amount}`}` : '';
+  const autoTriggerEnabled = actor.getFlag(HOPE_MODULE, HOPE_AUTO_TRIGGER_FLAG) ?? true;
 
   const control = $(
-    `<div class="hope-actions-sheet" style="margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">
-      <span><strong>Hope</strong> ${currentHope}/5</span>
-      <span>${pendingText}</span>
-      ${actor.isOwner ? '<button class="hope-actions-use button">Use Hope</button>' : ''}
-      ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award button">Award Hope</button>' : ''}
+    `<div class="hope-actions-sheet" style="margin-top: 0.25rem; display: flex; flex-direction: column; gap: 0.5rem;">
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <span><strong>Hope</strong> ${currentHope}/${game.settings.get(HOPE_MODULE, 'maxHope')}</span>
+        <span>${pendingText}</span>
+        ${actor.isOwner ? '<button class="hope-actions-use button">Use Hope</button>' : ''}
+        ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award button">Award Hope</button>' : ''}
+      </div>
+      ${actor.isOwner ? `<label style="display: flex; align-items: center; gap: 0.5rem;"><input type="checkbox" class="hope-auto-trigger" ${autoTriggerEnabled ? 'checked' : ''} /> Auto-trigger Hope prompts</label>` : ''}
     </div>`
   );
 
@@ -238,14 +280,24 @@ function renderActorSheetHopeControls(app, html, data) {
     if (!pendingAction) return;
     await actor.setFlag(HOPE_MODULE, HOPE_PENDING_FLAG, pendingAction);
   });
+
+  control.on('change', '.hope-auto-trigger', async (event) => {
+    const enabled = event.target.checked;
+    await actor.setFlag(HOPE_MODULE, HOPE_AUTO_TRIGGER_FLAG, enabled);
+  });
 }
 
-function renderHopeActionButton(message, html) {
+async function renderHopeActionButton(message, html) {
   const flags = message.data?.flags?.dnd5e?.roll ?? {};
-  if (flags.type !== 'abilityTest') return;
-
   const actor = ChatMessage.getSpeakerActor(message.data.speaker);
+  if (actor) {
+    if (await handlePendingHopeRefund(actor, message)) return;
+  }
+
+  if (flags.type !== 'abilityTest') return;
   if (!actor) return;
+  if (message.data?.flags?.[HOPE_MODULE]?.spentHope) return;
+  if (isNaturalOneMessage(message)) return;
   if (getActorHope(actor) <= 0) return;
   if (!actor.isOwner && !game.user.isGM) return;
   if (actor.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG)) return;
@@ -259,23 +311,48 @@ function renderHopeActionButton(message, html) {
     if (currentHope <= 0) {
       return ui.notifications.warn(game.i18n.localize('HOPE.SpendNoHope'));
     }
-    const pendingAction = await promptHopeAction(actor, currentHope);
+    const pendingAction = await promptHopeAction(actor, currentHope, message);
     if (!pendingAction) return;
-    await actor.setFlag(HOPE_MODULE, HOPE_PENDING_FLAG, pendingAction);
-    const messageText = pendingAction.type === 'reroll'
-      ? `${actor.name} will spend 3 Hope to reroll the next d20.`
-      : `${actor.name} will spend ${pendingAction.amount} Hope to add +${pendingAction.amount} to the next roll.`;
-    ChatMessage.create({speaker: ChatMessage.getSpeaker({actor: actor.id}), content: `<p>${messageText}</p>`});
+    await applyHopeActionToMessage(actor, message, pendingAction);
   });
 }
 
-async function promptHopeAction(actor, currentHope) {
+async function handlePendingHopeRefund(actor, message) {
+  const spentHope = message.data?.flags?.[HOPE_MODULE]?.spentHope;
+  if (!spentHope) return false;
+
+  if (isNaturalOneMessage(message)) {
+    await refundHopeFromMessage(actor, message);
+    return true;
+  }
+
+  return false;
+}
+
+async function refundHopeFromMessage(actor, message) {
+  const refundAmount = message.data?.flags?.[HOPE_MODULE]?.spentHope;
+  if (!refundAmount) return false;
+
+  await adjustActorHope(actor, refundAmount);
+  const content = `<p>${actor.name} gets ${refundAmount} Hope refunded because the roll was a natural 1.</p>`;
+  ChatMessage.create({speaker: ChatMessage.getSpeaker({actor: actor.id}), content});
+  return true;
+}
+
+async function promptHopeAction(actor, currentHope, message) {
+  const baseTotal = getMessageRollTotal(message);
+  const baseFormula = getMessageRollFormula(message);
+
   return new Promise(resolve => {
     let availableHope = currentHope;
     let pendingAdd = 0;
+    let previewTotal = baseTotal;
+    let rerollResult = null;
 
     const content = `
       <p>${game.i18n.localize('HOPE.SpendDialogText')}</p>
+      <p>Original result: <strong>${baseTotal}</strong></p>
+      <p>Preview result: <strong id="hope-preview">${previewTotal}</strong></p>
       <p>Current Hope: <span id="hope-current-amount">${availableHope}</span>/5</p>
       <p>Pending add: <span id="hope-pending-amount">${pendingAdd}</span></p>
       <div class="form-group">
@@ -299,15 +376,24 @@ async function promptHopeAction(actor, currentHope) {
               ui.notifications.warn('Not enough Hope for a reroll.');
               return false;
             }
-            await spendActorHope(actor, 3);
-            resolve({type: 'reroll', amount: 3});
-            return true;
+            if (!baseFormula) {
+              ui.notifications.warn('Unable to reroll this roll.');
+              return false;
+            }
+            rerollResult = await new Roll(baseFormula).roll({async: true});
+            previewTotal = rerollResult.total;
+            html.find('#hope-preview').text(previewTotal);
+            return false;
           }
         },
         add: {
           label: 'Add',
           close: false,
           callback: async (html) => {
+            if (rerollResult) {
+              ui.notifications.warn('You cannot add Hope after rerolling.');
+              return false;
+            }
             const amount = Number(html.find('#hope-add').val()) || 1;
             if (amount <= 0) {
               ui.notifications.warn('Please enter a valid amount.');
@@ -319,9 +405,10 @@ async function promptHopeAction(actor, currentHope) {
             }
             availableHope -= amount;
             pendingAdd += amount;
-            await spendActorHope(actor, amount);
+            previewTotal = baseTotal + pendingAdd;
             html.find('#hope-current-amount').text(availableHope);
             html.find('#hope-pending-amount').text(pendingAdd);
+            html.find('#hope-preview').text(previewTotal);
             html.find('#hope-add').attr('max', availableHope).val(1);
             return false;
           }
@@ -329,7 +416,9 @@ async function promptHopeAction(actor, currentHope) {
         done: {
           label: 'Done',
           callback: () => {
-            if (pendingAdd > 0) {
+            if (rerollResult) {
+              resolve({type: 'reroll', amount: 3, reroll: rerollResult});
+            } else if (pendingAdd > 0) {
               resolve({type: 'add', amount: pendingAdd});
             } else {
               resolve(null);
@@ -345,31 +434,41 @@ async function promptHopeAction(actor, currentHope) {
   });
 }
 
-function patchDnd5eRolls() {
-  const ActorClass = CONFIG.Actor.documentClass;
-  const ItemClass = CONFIG.Item.documentClass;
-  if (!ActorClass || !ItemClass) return;
+function getMessageRollFormula(message) {
+  return message.rolls?.[0]?.formula || message.data?.rolls?.[0]?.formula || message.data?.flags?.dnd5e?.roll?.formula || '';
+}
 
-  const originalAbilityTest = ActorClass.prototype.rollAbilityTest;
-  ActorClass.prototype.rollAbilityTest = async function (abilityId, options = {}) {
-    options = await applyPendingHopeToOptions(this, options);
-    return originalAbilityTest.call(this, abilityId, options);
-  };
+function getMessageRollTotal(message) {
+  return Number(message.rolls?.[0]?.total ?? message.data?.rolls?.[0]?.total ?? 0);
+}
 
-  const originalSave = ActorClass.prototype.rollAbilitySave;
-  ActorClass.prototype.rollAbilitySave = async function (abilityId, options = {}) {
-    options = await applyPendingHopeToOptions(this, options);
-    return originalSave.call(this, abilityId, options);
-  };
+async function applyHopeActionToMessage(actor, message, pendingAction) {
+  const formula = getMessageRollFormula(message);
+  if (!formula) {
+    ui.notifications.warn('Hope Actions could not determine the original roll formula.');
+    return;
+  }
 
-  const originalAttack = ItemClass.prototype.rollAttack;
-  ItemClass.prototype.rollAttack = async function (options = {}) {
-    const actor = this.actor;
-    if (actor) {
-      options = await applyPendingHopeToOptions(actor, options);
-    }
-    return originalAttack.call(this, options);
-  };
+  if (pendingAction.type === 'add') {
+    await spendActorHope(actor, pendingAction.amount);
+    const reroll = await new Roll(`${formula} + ${pendingAction.amount}`).roll({async: true});
+    await reroll.toMessage({
+      speaker: ChatMessage.getSpeaker({actor: actor.id}),
+      flavor: `${actor.name} spends ${pendingAction.amount} Hope to add +${pendingAction.amount}.`,
+      flags: {[HOPE_MODULE]: {spentHope: pendingAction.amount}}
+    });
+    return;
+  }
+
+  if (pendingAction.type === 'reroll') {
+    await spendActorHope(actor, pendingAction.amount);
+    const reroll = pendingAction.reroll ?? await new Roll(formula).roll({async: true});
+    await reroll.toMessage({
+      speaker: ChatMessage.getSpeaker({actor: actor.id}),
+      flavor: `${actor.name} spends ${pendingAction.amount} Hope to reroll.`,
+      flags: {[HOPE_MODULE]: {spentHope: pendingAction.amount}}
+    });
+  }
 }
 
 async function applyPendingHopeToOptions(actor, options = {}) {
@@ -377,13 +476,37 @@ async function applyPendingHopeToOptions(actor, options = {}) {
   if (!pending) return options;
   await actor.unsetFlag(HOPE_MODULE, HOPE_PENDING_FLAG);
 
+  // The roll has not yet been evaluated here, so we cannot reliably detect a natural 1 yet.
+  // Natural-1 refund handling happens later when the chat message is rendered.
   if (pending.type === 'add') {
-    options.modifiers = (options.modifiers || 0) + pending.amount;
-    const content = `<p>${actor.name} spends ${pending.amount} Hope to add +${pending.amount} to this roll.</p>`;
+    await spendActorHope(actor, pending.amount);
+    options.flags = options.flags || {};
+    options.flags[HOPE_MODULE] = {
+      ...(options.flags[HOPE_MODULE] || {}),
+      spentHope: pending.amount
+    };
+    let modifier = pending.amount;
+    // Cap total at 19 to prevent crits
+    if (options.modifiers) {
+      const baseTotal = options.rolls?.[0]?.total || 0;
+      const currentModifiers = Number(options.modifiers) || 0;
+      const projectedTotal = baseTotal + currentModifiers + modifier;
+      if (projectedTotal >= 20) {
+        modifier = Math.max(0, 19 - (baseTotal + currentModifiers));
+      }
+    }
+    options.modifiers = (options.modifiers || 0) + modifier;
+    const content = `<p>${actor.name} spends ${pending.amount} Hope to add +${modifier} to this roll.</p>`;
     ChatMessage.create({speaker: ChatMessage.getSpeaker({actor: actor.id}), content});
   }
 
   if (pending.type === 'reroll') {
+    await spendActorHope(actor, 3);
+    options.flags = options.flags || {};
+    options.flags[HOPE_MODULE] = {
+      ...(options.flags[HOPE_MODULE] || {}),
+      spentHope: 3
+    };
     game[HOPE_MODULE].nextD20Reroll = true;
     const content = `<p>${actor.name} spends 3 Hope to reroll the next d20.</p>`;
     ChatMessage.create({speaker: ChatMessage.getSpeaker({actor: actor.id}), content});

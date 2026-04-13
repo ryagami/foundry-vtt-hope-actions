@@ -19,8 +19,9 @@ Place this folder in your Foundry `Data/modules` directory and enable it in the 
 
 ## Settings
 
-- **Auto-trigger Hope prompt for ability checks**: When enabled, players with non-zero Hope will be prompted to spend it before rolling an ability check.
-- This setting is disabled by default, so Hope only spends when the player chooses to use it manually.
+- **Auto-trigger Hope prompt for ability checks**: When enabled, players with Hope will be prompted to spend it before rolling ability checks.
+- **Maximum Hope**: The maximum amount of Hope a character can have before overflow occurs (default 5).
+- Players can also toggle auto-trigger per character on their actor sheet.
 
 ## Notes
 
