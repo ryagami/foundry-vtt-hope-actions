@@ -176,15 +176,17 @@ async function renderHopeActionButton(message, html) {
   const showAwardButtonFailedRolls = game.settings.get(HOPE_MODULE, 'showAwardButtonFailedRolls');
   const alreadyAwardedOnMessage = message.flags?.[HOPE_MODULE]?.failureHopeAwarded;
   const canAwardOnMessage = ['attack', 'save'].includes(rollType);
+  const contentArea = $html.find('.message-content');
+  const rowHost = contentArea.length ? contentArea : $html;
+  let buttonRow = rowHost.find('.hope-actions-chat-row').first();
+  if (!buttonRow.length) {
+    buttonRow = $('<div class="hope-actions-chat-row"></div>');
+    rowHost.append(buttonRow);
+  }
+
   if (showAwardButtonFailedRolls && canAwardOnMessage && !alreadyAwardedOnMessage) {
     const awardButton = $(`<button class="hope-actions-award-chat button">Award Hope</button>`);
-    const awardArea = $html.find('.card-buttons').first();
-    if (awardArea.length) {
-      awardArea.append(awardButton);
-    } else {
-      const contentArea = $html.find('.message-content');
-      (contentArea.length ? contentArea : $html).append(awardButton);
-    }
+    buttonRow.append(awardButton);
 
     awardButton.on('click', async () => {
       await awardActorHope(actor, 1, 'manual roll award');
@@ -200,13 +202,7 @@ async function renderHopeActionButton(message, html) {
   if (getActorHope(actor) <= 0) return;
 
   const button = $(`<button class="hope-actions-chat button">${game.i18n.localize('HOPE.ChatButtonLabel')}</button>`);
-  const buttonArea = $html.find('.card-buttons').first();
-  if (buttonArea.length) {
-    buttonArea.append(button);
-  } else {
-    const contentArea = $html.find('.message-content');
-    (contentArea.length ? contentArea : $html).append(button);
-  }
+  buttonRow.append(button);
 
   button.on('click', async () => {
     const currentHope = getActorHope(actor);
@@ -247,7 +243,9 @@ async function promptHopeAction(actor, currentHope, message) {
       buttons: {
         reroll: {
           label: 'Reroll',
+          close: false,
           callback: async (html) => {
+            const $dialogHtml = html instanceof jQuery ? html : $(html);
             if (rerollResult) {
               ui.notifications.warn('Reroll is already selected.');
               return false;
@@ -263,9 +261,9 @@ async function promptHopeAction(actor, currentHope, message) {
             availableHope -= 3;
             rerollResult = await new Roll(baseFormula).roll();
             previewTotal = rerollResult.total + pendingAdd;
-            html.find('#hope-current-amount').text(availableHope);
-            html.find('#hope-add').attr('max', availableHope).val(1);
-            html.find('#hope-preview').text(previewTotal);
+            $dialogHtml.find('#hope-current-amount').text(availableHope);
+            $dialogHtml.find('#hope-add').attr('max', availableHope).val(1);
+            $dialogHtml.find('#hope-preview').text(previewTotal);
             return false;
           }
         },
@@ -273,7 +271,8 @@ async function promptHopeAction(actor, currentHope, message) {
           label: 'Add',
           close: false,
           callback: async (html) => {
-            const amount = Number(html.find('#hope-add').val()) || 1;
+            const $dialogHtml = html instanceof jQuery ? html : $(html);
+            const amount = Number($dialogHtml.find('#hope-add').val()) || 1;
             if (amount <= 0) {
               ui.notifications.warn('Please enter a valid amount.');
               return false;
@@ -286,10 +285,10 @@ async function promptHopeAction(actor, currentHope, message) {
             pendingAdd += amount;
             const currentBase = rerollResult ? rerollResult.total : baseTotal;
             previewTotal = currentBase + pendingAdd;
-            html.find('#hope-current-amount').text(availableHope);
-            html.find('#hope-pending-amount').text(pendingAdd);
-            html.find('#hope-preview').text(previewTotal);
-            html.find('#hope-add').attr('max', availableHope).val(1);
+            $dialogHtml.find('#hope-current-amount').text(availableHope);
+            $dialogHtml.find('#hope-pending-amount').text(pendingAdd);
+            $dialogHtml.find('#hope-preview').text(previewTotal);
+            $dialogHtml.find('#hope-add').attr('max', availableHope).val(1);
             return false;
           }
         },

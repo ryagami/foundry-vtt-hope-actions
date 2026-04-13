@@ -33,3 +33,28 @@
 .hope-actions-sheet .hope-actions-award:hover {
   filter: brightness(0.95);
 }
+
+.hope-actions-chat-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.hope-actions-chat.button,
+.hope-actions-award-chat.button {
+  border-radius: 6px;
+  border: 1px solid #5f6fb8;
+  background: linear-gradient(180deg, #4457ae 0%, #2f3f86 100%);
+  color: #f2f5ff;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  min-height: 1.8rem;
+  padding: 0.2rem 0.65rem;
+}
+
+.hope-actions-chat.button:hover,
+.hope-actions-award-chat.button:hover {
+  filter: brightness(1.08);
+}
