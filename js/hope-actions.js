@@ -215,101 +215,85 @@ async function renderHopeActionButton(message, html) {
 async function promptHopeAction(actor, currentHope, message) {
   const baseTotal = getMessageRollTotal(message);
   const baseFormula = getMessageRollFormula(message);
+  const maxHope = game.settings.get(HOPE_MODULE, 'maxHope');
 
+  // Use a manually managed overlay instead of new Dialog() because Foundry V13's
+  // ApplicationV2-based Dialog shim ignores `close: false` on button definitions.
   return new Promise(resolve => {
     let availableHope = currentHope;
     let pendingAdd = 0;
     let previewTotal = baseTotal;
     let rerollResult = null;
 
-    const content = `
-      <p>${game.i18n.localize('HOPE.SpendDialogText')}</p>
-      <p>Original result: <strong>${baseTotal}</strong></p>
-      <p>Preview result: <strong id="hope-preview">${previewTotal}</strong></p>
-      <p>Current Hope: <span id="hope-current-amount">${availableHope}</span>/${game.settings.get(HOPE_MODULE, 'maxHope')}</p>
-      <p>Pending add: <span id="hope-pending-amount">${pendingAdd}</span></p>
-      <div class="form-group">
-        <label>${game.i18n.localize('HOPE.SpendAddLabel')}</label>
-        <input id="hope-add" type="number" min="1" max="${availableHope}" value="1" style="width: 100%;" />
+    const $overlay = $(`
+      <div id="hope-spend-overlay">
+        <div class="hope-spend-dialog">
+          <h3>${game.i18n.localize('HOPE.SpendDialogTitle')}</h3>
+          <p class="notes">${game.i18n.localize('HOPE.SpendDialogText')}</p>
+          <div class="hope-dialog-stats">
+            <div><span class="hope-stat-label">Original</span><strong>${baseTotal}</strong></div>
+            <div><span class="hope-stat-label">Preview</span><strong id="hope-preview">${previewTotal}</strong></div>
+            <div><span class="hope-stat-label">Hope Left</span><span id="hope-current-amount">${availableHope}</span>/${maxHope}</div>
+            <div><span class="hope-stat-label">Pending +</span><span id="hope-pending-amount">${pendingAdd}</span></div>
+          </div>
+          <div class="form-group">
+            <label>${game.i18n.localize('HOPE.SpendAddLabel')}</label>
+            <input id="hope-add" type="number" min="1" max="${availableHope}" value="1" />
+          </div>
+          <div class="hope-dialog-buttons">
+            <button class="hope-dialog-btn" data-action="reroll">Reroll <em>(3 Hope)</em></button>
+            <button class="hope-dialog-btn" data-action="add">Add</button>
+            <button class="hope-dialog-btn primary" data-action="done">Done</button>
+            <button class="hope-dialog-btn secondary" data-action="cancel">Cancel</button>
+          </div>
+        </div>
       </div>
-    `;
+    `);
 
-    const dialog = new Dialog({
-      title: game.i18n.localize('HOPE.SpendDialogTitle'),
-      content,
-      buttons: {
-        reroll: {
-          label: 'Reroll',
-          close: false,
-          callback: async (html) => {
-            const $dialogHtml = html instanceof jQuery ? html : $(html);
-            if (rerollResult) {
-              ui.notifications.warn('Reroll is already selected.');
-              return false;
-            }
-            if (availableHope < 3) {
-              ui.notifications.warn('Not enough Hope for a reroll.');
-              return false;
-            }
-            if (!baseFormula) {
-              ui.notifications.warn('Unable to reroll this roll.');
-              return false;
-            }
-            availableHope -= 3;
-            rerollResult = await new Roll(baseFormula).roll();
-            previewTotal = rerollResult.total + pendingAdd;
-            $dialogHtml.find('#hope-current-amount').text(availableHope);
-            $dialogHtml.find('#hope-add').attr('max', availableHope).val(1);
-            $dialogHtml.find('#hope-preview').text(previewTotal);
-            return false;
-          }
-        },
-        add: {
-          label: 'Add',
-          close: false,
-          callback: async (html) => {
-            const $dialogHtml = html instanceof jQuery ? html : $(html);
-            const amount = Number($dialogHtml.find('#hope-add').val()) || 1;
-            if (amount <= 0) {
-              ui.notifications.warn('Please enter a valid amount.');
-              return false;
-            }
-            if (amount > availableHope) {
-              ui.notifications.warn('You cannot spend more Hope than you have.');
-              return false;
-            }
-            availableHope -= amount;
-            pendingAdd += amount;
-            const currentBase = rerollResult ? rerollResult.total : baseTotal;
-            previewTotal = currentBase + pendingAdd;
-            $dialogHtml.find('#hope-current-amount').text(availableHope);
-            $dialogHtml.find('#hope-pending-amount').text(pendingAdd);
-            $dialogHtml.find('#hope-preview').text(previewTotal);
-            $dialogHtml.find('#hope-add').attr('max', availableHope).val(1);
-            return false;
-          }
-        },
-        done: {
-          label: 'Done',
-          callback: () => {
-            if (rerollResult || pendingAdd > 0) {
-              resolve({
-                type: 'modify',
-                rerollSelected: Boolean(rerollResult),
-                reroll: rerollResult,
-                addAmount: pendingAdd
-              });
-            } else {
-              resolve(null);
-            }
-          }
-        }
-      },
-      default: 'done',
-      close: () => resolve(null)
+    const closeDialog = (result) => { $overlay.remove(); resolve(result); };
+
+    $overlay.on('click', '[data-action="reroll"]', async () => {
+      if (rerollResult) { ui.notifications.warn('Reroll is already selected.'); return; }
+      if (availableHope < 3) { ui.notifications.warn('Not enough Hope for a reroll.'); return; }
+      if (!baseFormula) { ui.notifications.warn('Unable to reroll this roll.'); return; }
+      availableHope -= 3;
+      rerollResult = await new Roll(baseFormula).roll();
+      previewTotal = rerollResult.total + pendingAdd;
+      $overlay.find('#hope-current-amount').text(availableHope);
+      $overlay.find('#hope-add').attr('max', availableHope).val(1);
+      $overlay.find('#hope-preview').text(previewTotal);
     });
 
-    dialog.render(true);
+    $overlay.on('click', '[data-action="add"]', () => {
+      const amount = Number($overlay.find('#hope-add').val()) || 1;
+      if (amount <= 0) { ui.notifications.warn('Please enter a valid amount.'); return; }
+      if (amount > availableHope) { ui.notifications.warn('You cannot spend more Hope than you have.'); return; }
+      availableHope -= amount;
+      pendingAdd += amount;
+      const currentBase = rerollResult ? rerollResult.total : baseTotal;
+      previewTotal = currentBase + pendingAdd;
+      $overlay.find('#hope-current-amount').text(availableHope);
+      $overlay.find('#hope-pending-amount').text(pendingAdd);
+      $overlay.find('#hope-preview').text(previewTotal);
+      $overlay.find('#hope-add').attr('max', availableHope).val(1);
+    });
+
+    $overlay.on('click', '[data-action="done"]', () => {
+      if (rerollResult || pendingAdd > 0) {
+        closeDialog({ type: 'modify', rerollSelected: Boolean(rerollResult), reroll: rerollResult, addAmount: pendingAdd });
+      } else {
+        closeDialog(null);
+      }
+    });
+
+    $overlay.on('click', '[data-action="cancel"]', () => closeDialog(null));
+
+    // Click outside the dialog box to cancel.
+    $overlay.on('click', (e) => {
+      if ($(e.target).is('#hope-spend-overlay')) closeDialog(null);
+    });
+
+    $('body').append($overlay);
   });
 }
 

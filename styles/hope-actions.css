@@ -60,3 +60,106 @@
 .hope-actions-award-chat.button:hover {
   filter: brightness(1.08);
 }
+
+/* ── Hope spend overlay (replaces Dialog, works in all Foundry versions) ── */
+#hope-spend-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hope-spend-dialog {
+  background: var(--color-bg, #1c1c2e);
+  border: 1px solid var(--color-border-light-primary, #555);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  min-width: 320px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.hope-spend-dialog h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hope-spend-dialog .notes {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.hope-dialog-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.hope-dialog-stats .hope-stat-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  opacity: 0.6;
+  letter-spacing: 0.04em;
+}
+
+.hope-spend-dialog .form-group {
+  margin-bottom: 0.75rem;
+}
+
+.hope-spend-dialog .form-group label {
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+  display: block;
+}
+
+.hope-spend-dialog .form-group input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hope-dialog-buttons {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hope-dialog-btn {
+  border-radius: 6px;
+  border: 1px solid #5f6fb8;
+  background: linear-gradient(180deg, #4457ae 0%, #2f3f86 100%);
+  color: #f2f5ff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.65rem;
+  cursor: pointer;
+}
+
+.hope-dialog-btn:hover {
+  filter: brightness(1.1);
+}
+
+.hope-dialog-btn.primary {
+  border-color: #84d48e;
+  background: linear-gradient(180deg, #3a8f44 0%, #256a2e 100%);
+}
+
+.hope-dialog-btn.secondary {
+  border-color: #777;
+  background: linear-gradient(180deg, #555 0%, #333 100%);
+}
