@@ -5,8 +5,8 @@ A Foundry VTT module for D&D 5E that tracks a custom resource called Hope.
 ## Features
 
 - Players start with 0 Hope.
-- Hope is capped at 5.
-- If a player would gain Hope while at 5, they instead lose all Hope and keep only the result of 1d4.
+- Hope is capped at a configurable maximum (default 5).
+- If a player would gain Hope while at that maximum, they instead lose all Hope and keep only the result of 1d4.
 - Players can gain Hope on failed attack rolls and failed saving throws (automatic and/or chat button, configurable), once per turn.
 - The GM can manually award Hope from the actor sheet.
 - Players can spend Hope on attack rolls, ability checks, and saving throws:
