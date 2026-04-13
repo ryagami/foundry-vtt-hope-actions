@@ -143,26 +143,49 @@ function renderActorSheetHopeControls(app, html, data) {
 
   const headerHeight = Number($root.find('.sheet-header').first().outerHeight() ?? 0);
   const topOffset = Math.max(headerHeight + 6, 8);
-
-  // Avoid duplicate injection on partial re-renders.
-  $root.find('.hope-actions-sheet').remove();
   $host.addClass('hope-actions-host');
   $host.css('--hope-sheet-top', `${topOffset}px`);
 
   const currentHope = getActorHope(actor);
   const maxHope = game.settings.get(HOPE_MODULE, 'maxHope');
+  const canManageHope = actor.isOwner || game.user.isGM;
+  const hopeText = `Hope <strong>${currentHope}</strong>/${maxHope}`;
+  const $existing = $host.find('[data-hope-controls="sheet"]').first();
 
-  const control = $(
-    `<div class="hope-actions-sheet">
-      <span class="hope-actions-value">Hope <strong>${currentHope}</strong>/${maxHope}</span>
-      ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award" type="button" title="Award 1 Hope" aria-label="Award 1 Hope">+1</button>' : ''}
-    </div>`
-  );
+  // Keep the control idempotent across partial re-renders.
+  if ($existing.length) {
+    $existing.find('[data-hope-value]').html(hopeText);
+    const hasAwardButton = $existing.find('[data-hope-action="award"]').length > 0;
+    if (canManageHope && !hasAwardButton) {
+      $existing.append('<button class="hope-actions-award" data-hope-action="award" type="button" title="Award 1 Hope" aria-label="Award 1 Hope">+1</button>');
+    }
+    if (!canManageHope && hasAwardButton) {
+      $existing.find('[data-hope-action="award"]').remove();
+    }
+  } else {
+    const control = $(
+      `<div class="hope-actions-sheet" data-hope-controls="sheet">
+        <span class="hope-actions-value" data-hope-value>${hopeText}</span>
+        ${canManageHope ? '<button class="hope-actions-award" data-hope-action="award" type="button" title="Award 1 Hope" aria-label="Award 1 Hope">+1</button>' : ''}
+      </div>`
+    );
 
-  $host.append(control);
+    $host.append(control);
+  }
 
-  control.on('click', '.hope-actions-award', async () => {
-    await awardActorHope(actor, 1, 'award');
+  // Bind once per render call scope; namespacing prevents duplicate handlers.
+  $host.off('click.hopeActionsAward', '[data-hope-action="award"]');
+  $host.on('click.hopeActionsAward', '[data-hope-action="award"]', async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const $button = $(event.currentTarget);
+    if ($button.prop('disabled')) return;
+    $button.prop('disabled', true);
+    try {
+      await awardActorHope(actor, 1, 'award');
+    } finally {
+      $button.prop('disabled', false);
+    }
   });
 
 }
