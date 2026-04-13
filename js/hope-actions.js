@@ -202,7 +202,10 @@ async function renderHopeActionButton(message, html) {
   if (!canManageHope) return;
 
   const showAwardButtonFailedRolls = game.settings.get(HOPE_MODULE, 'showAwardButtonFailedRolls');
-  const alreadyAwardedOnMessage = message.flags?.[HOPE_MODULE]?.failureHopeAwarded;
+  const alreadyAwardedOnMessage = Boolean(
+    message.flags?.[HOPE_MODULE]?.failureHopeAwarded
+    || message.flags?.[HOPE_MODULE]?.hopeAwarded
+  );
   const canAwardOnMessage = ['attack', 'save'].includes(rollType);
   const contentArea = $html.find('.message-content');
   const rowHost = contentArea.length ? contentArea : $html;
@@ -219,13 +222,16 @@ async function renderHopeActionButton(message, html) {
     awardButton.on('click', async () => {
       await awardActorHope(actor, 1, 'manual roll award');
       await message.setFlag(HOPE_MODULE, 'failureHopeAwarded', true);
+      await message.setFlag(HOPE_MODULE, 'hopeAwarded', true);
       awardButton.prop('disabled', true);
+      buttonRow.find('.hope-actions-chat').remove();
     });
   }
 
   const supportedHopeRollTypes = ['abilityTest', 'attack', 'save'];
   if (!supportedHopeRollTypes.includes(rollType)) return;
   if (message.flags?.[HOPE_MODULE]?.spentHope) return;
+  if (alreadyAwardedOnMessage) return;
   if (isNaturalOneMessage(message)) return;
   if (getActorHope(actor) <= 0) return;
 
@@ -233,6 +239,9 @@ async function renderHopeActionButton(message, html) {
   buttonRow.append(button);
 
   button.on('click', async () => {
+    if (message.flags?.[HOPE_MODULE]?.failureHopeAwarded || message.flags?.[HOPE_MODULE]?.hopeAwarded) {
+      return ui.notifications.warn('This roll already granted Hope and cannot be modified with Hope.');
+    }
     const currentHope = getActorHope(actor);
     if (currentHope <= 0) {
       return ui.notifications.warn(game.i18n.localize('HOPE.SpendNoHope'));
@@ -369,6 +378,11 @@ function rollHasNaturalOne(roll) {
 }
 
 async function applyHopeActionToMessage(actor, message, pendingAction) {
+  if (message.flags?.[HOPE_MODULE]?.failureHopeAwarded || message.flags?.[HOPE_MODULE]?.hopeAwarded) {
+    ui.notifications.warn('This roll already granted Hope and cannot be modified with Hope.');
+    return;
+  }
+
   const formula = getMessageRollFormula(message);
   const baseTotal = getMessageRollTotal(message);
   const rerollSelected = Boolean(pendingAction.rerollSelected);
