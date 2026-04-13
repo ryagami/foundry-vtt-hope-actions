@@ -1,11 +1,28 @@
 {
-  "name": "foundry-vtt-hope-actions",
+  "id": "foundry-vtt-hope-actions",
   "title": "Hope Actions Tracker",
   "description": "Adds a Hope tracker for D&D 5E and lets players spend Hope to modify ability checks, attacks, and saving throws.",
   "version": "0.1.0",
-  "author": "Foundry Module",
-  "minimumCoreVersion": "11",
-  "compatibleCoreVersion": "11",
+  "authors": [
+    {
+      "name": "ryagami"
+    }
+  ],
+  "compatibility": {
+    "minimum": "11",
+    "verified": "12"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "3.0.0"
+        }
+      }
+    ]
+  },
   "scripts": ["js/hope-actions.js"],
   "styles": ["styles/hope-actions.css"],
   "languages": [
