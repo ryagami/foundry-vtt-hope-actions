@@ -36,8 +36,7 @@ Hooks.once('ready', () => {
 
   game[HOPE_MODULE] = {};
 
-  Hooks.on('renderActorSheet5eCharacter', renderActorSheetHopeControls);
-  Hooks.on('renderActorSheet5eCharacter2', renderActorSheetHopeControls);
+  Hooks.on('renderCharacterActorSheet', renderActorSheetHopeControls);
   Hooks.on('dnd5e.renderChatMessage', renderHopeActionButton);
 });
 
@@ -109,6 +108,14 @@ function renderActorSheetHopeControls(app, html, data) {
   if (!actor) return;
   const $html = html instanceof jQuery ? html : $(html);
 
+  // Handle both full renders (.sheet-header is a descendant) and partial header
+  // renders where the element itself IS .sheet-header.
+  const $target = $html.find('.sheet-header').add($html.filter('.sheet-header')).first();
+  if (!$target.length) return;
+
+  // Avoid duplicate injection on partial re-renders.
+  $target.find('.hope-actions-sheet').remove();
+
   const currentHope = getActorHope(actor);
 
   const control = $(
@@ -120,7 +127,7 @@ function renderActorSheetHopeControls(app, html, data) {
     </div>`
   );
 
-  $html.find('.sheet-header').prepend(control);
+  $target.prepend(control);
 
   control.on('click', '.hope-actions-award', async () => {
     await awardActorHope(actor, 1, 'award');
@@ -142,8 +149,13 @@ async function renderHopeActionButton(message, html) {
   const canAwardOnMessage = ['attack', 'save'].includes(flags.type);
   if (showAwardButtonFailedRolls && canAwardOnMessage && !alreadyAwardedOnMessage) {
     const awardButton = $(`<button class="hope-actions-award-chat button">Award Hope</button>`);
-    const awardArea = $html.find('.card-buttons').length ? $html.find('.card-buttons').first() : $html;
-    awardArea.append(awardButton);
+    const awardArea = $html.find('.card-buttons').first();
+    if (awardArea.length) {
+      awardArea.append(awardButton);
+    } else {
+      const contentArea = $html.find('.message-content');
+      (contentArea.length ? contentArea : $html).append(awardButton);
+    }
 
     awardButton.on('click', async () => {
       await awardActorHope(actor, 1, 'manual roll award');
@@ -159,8 +171,13 @@ async function renderHopeActionButton(message, html) {
   if (getActorHope(actor) <= 0) return;
 
   const button = $(`<button class="hope-actions-chat button">${game.i18n.localize('HOPE.ChatButtonLabel')}</button>`);
-  const buttonArea = $html.find('.card-buttons').length ? $html.find('.card-buttons').first() : $html;
-  buttonArea.append(button);
+  const buttonArea = $html.find('.card-buttons').first();
+  if (buttonArea.length) {
+    buttonArea.append(button);
+  } else {
+    const contentArea = $html.find('.message-content');
+    (contentArea.length ? contentArea : $html).append(button);
+  }
 
   button.on('click', async () => {
     const currentHope = getActorHope(actor);
