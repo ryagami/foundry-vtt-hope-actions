@@ -107,27 +107,36 @@ function renderActorSheetHopeControls(app, html, data) {
   const actor = app.actor;
   if (!actor) return;
   const $html = html instanceof jQuery ? html : $(html);
+  const $root = app.element
+    ? (app.element instanceof jQuery ? app.element : $(app.element))
+    : $html;
 
-  // Handle both full renders (.sheet-header is a descendant) and partial header
-  // renders where the element itself IS .sheet-header.
-  const $target = $html.find('.sheet-header').add($html.filter('.sheet-header')).first();
+  // Prefer placing next to ability scores. Fallback to header right, then header.
+  const $target =
+    $root.find('.ability-scores').first().length
+      ? $root.find('.ability-scores').first()
+      : ($root.find('.sheet-header .right').first().length
+        ? $root.find('.sheet-header .right').first()
+        : $root.find('.sheet-header').first());
   if (!$target.length) return;
 
   // Avoid duplicate injection on partial re-renders.
-  $target.find('.hope-actions-sheet').remove();
+  $root.find('.hope-actions-sheet').remove();
 
   const currentHope = getActorHope(actor);
 
   const control = $(
-    `<div class="hope-actions-sheet" style="margin-top: 0.25rem; display: flex; flex-direction: column; gap: 0.5rem;">
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span><strong>Hope</strong> ${currentHope}/${game.settings.get(HOPE_MODULE, 'maxHope')}</span>
-        ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award button">Award Hope</button>' : ''}
-      </div>
+    `<div class="hope-actions-sheet">
+      <span class="hope-actions-value">Hope ${currentHope}/${game.settings.get(HOPE_MODULE, 'maxHope')}</span>
+      ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award button" type="button">Award Hope</button>' : ''}
     </div>`
   );
 
-  $target.prepend(control);
+  if ($target.is('.ability-scores')) {
+    $target.append(control);
+  } else {
+    $target.prepend(control);
+  }
 
   control.on('click', '.hope-actions-award', async () => {
     await awardActorHope(actor, 1, 'award');
