@@ -135,23 +135,27 @@ function renderActorSheetHopeControls(app, html, data) {
     ? (app.element instanceof jQuery ? app.element : $(app.element))
     : $html;
 
-  // Inject above the entire header so the bar sits above all stats.
-  const $sheetHeader = $root.find('.sheet-header').first();
-  if (!$sheetHeader.length) return;
+  // Anchor to window-content so the control floats without consuming layout space.
+  const $host = $root.find('.window-content').first().length
+    ? $root.find('.window-content').first()
+    : $root;
+  if (!$host.length) return;
 
   // Avoid duplicate injection on partial re-renders.
   $root.find('.hope-actions-sheet').remove();
+  $host.addClass('hope-actions-host');
 
   const currentHope = getActorHope(actor);
+  const maxHope = game.settings.get(HOPE_MODULE, 'maxHope');
 
   const control = $(
     `<div class="hope-actions-sheet">
-      <span class="hope-actions-value">Hope ${currentHope}/${game.settings.get(HOPE_MODULE, 'maxHope')}</span>
-      ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award button" type="button">Award Hope</button>' : ''}
+      <span class="hope-actions-value">Hope <strong>${currentHope}</strong>/${maxHope}</span>
+      ${(actor.isOwner || game.user.isGM) ? '<button class="hope-actions-award" type="button" title="Award 1 Hope">+1</button>' : ''}
     </div>`
   );
 
-  $sheetHeader.after(control);
+  $host.append(control);
 
   control.on('click', '.hope-actions-award', async () => {
     await awardActorHope(actor, 1, 'award');
