@@ -23,6 +23,10 @@
   "HOPE.Settings.AutoTriggerAbilityChecks.Hint": "When enabled, players with Hope will be prompted to spend it before rolling ability checks.",
   "HOPE.Settings.MaxHope.Name": "Maximum Hope",
   "HOPE.Settings.MaxHope.Hint": "The maximum amount of Hope a character can have before overflow occurs.",
+  "foundry-vtt-hope-actions.settings.autoAwardFailedRolls.name": "Auto-award Hope on failed attacks/saves",
+  "foundry-vtt-hope-actions.settings.autoAwardFailedRolls.hint": "When enabled, a failed attack roll or failed saving throw automatically grants 1 Hope.",
+  "foundry-vtt-hope-actions.settings.showAwardButtonFailedRolls.name": "Show chat Award Hope button on failed attacks/saves",
+  "foundry-vtt-hope-actions.settings.showAwardButtonFailedRolls.hint": "When enabled, failed attack roll and failed saving throw chat messages include an Award Hope button.",
   "HOPE.ChatButtonLabel": "Use Hope",
   "HOPE.AutoTriggerLabel": "Auto-trigger Hope prompts"
 }

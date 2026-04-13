@@ -29,6 +29,24 @@ Hooks.once('init', () => {
       step: 1
     }
   });
+
+  game.settings.register(HOPE_MODULE, 'autoAwardFailedRolls', {
+    name: `${HOPE_MODULE}.settings.autoAwardFailedRolls.name`,
+    hint: `${HOPE_MODULE}.settings.autoAwardFailedRolls.hint`,
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
+  game.settings.register(HOPE_MODULE, 'showAwardButtonFailedRolls', {
+    name: `${HOPE_MODULE}.settings.showAwardButtonFailedRolls.name`,
+    hint: `${HOPE_MODULE}.settings.showAwardButtonFailedRolls.hint`,
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
+  });
 });
 
 Hooks.once('ready', () => {
@@ -220,6 +238,9 @@ function handleCombatTurnChange(combat, changed, options, userId) {
 }
 
 async function handleChatMessageHopeAward(message, data, options, userId) {
+  const autoAwardFailedRolls = game.settings.get(HOPE_MODULE, 'autoAwardFailedRolls');
+  if (!autoAwardFailedRolls) return;
+
   if (!data?.speaker) return;
   const actor = ChatMessage.getSpeakerActor(data.speaker);
   if (!actor) return;
@@ -234,6 +255,13 @@ async function handleChatMessageHopeAward(message, data, options, userId) {
 
   await awardActorHope(actor, 1, 'automatic reward');
   await markAwardedThisTurn(actor);
+}
+
+function isFailedAttackOrSaveMessage(message) {
+  const flags = message.data?.flags?.dnd5e?.roll ?? {};
+  if (!['attack', 'save'].includes(flags.type)) return false;
+  const content = message.data?.content || '';
+  return /(miss|failure|failed)/i.test(content);
 }
 
 function isNaturalOneMessage(message) {
@@ -294,12 +322,30 @@ async function renderHopeActionButton(message, html) {
     if (await handlePendingHopeRefund(actor, message)) return;
   }
 
-  if (flags.type !== 'abilityTest') return;
   if (!actor) return;
+  const canManageHope = actor.isOwner || game.user.isGM;
+  if (!canManageHope) return;
+
+  const showAwardButtonFailedRolls = game.settings.get(HOPE_MODULE, 'showAwardButtonFailedRolls');
+  const alreadyAwardedOnMessage = message.data?.flags?.[HOPE_MODULE]?.failureHopeAwarded;
+  if (showAwardButtonFailedRolls && !alreadyAwardedOnMessage && isFailedAttackOrSaveMessage(message) && !hasAwardedThisTurn(actor)) {
+    const awardButton = $(`<button class="hope-actions-award-chat button">Award Hope</button>`);
+    const awardArea = html.find('.card-buttons').length ? html.find('.card-buttons').first() : html;
+    awardArea.append(awardButton);
+
+    awardButton.on('click', async () => {
+      await awardActorHope(actor, 1, 'manual failed roll award');
+      await markAwardedThisTurn(actor);
+      await message.setFlag(HOPE_MODULE, 'failureHopeAwarded', true);
+      awardButton.prop('disabled', true);
+    });
+  }
+
+  const supportedHopeRollTypes = ['abilityTest', 'attack', 'save'];
+  if (!supportedHopeRollTypes.includes(flags.type)) return;
   if (message.data?.flags?.[HOPE_MODULE]?.spentHope) return;
   if (isNaturalOneMessage(message)) return;
   if (getActorHope(actor) <= 0) return;
-  if (!actor.isOwner && !game.user.isGM) return;
   if (actor.getFlag(HOPE_MODULE, HOPE_PENDING_FLAG)) return;
 
   const button = $(`<button class="hope-actions-chat button">${game.i18n.localize('HOPE.ChatButtonLabel')}</button>`);
