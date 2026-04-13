@@ -135,12 +135,9 @@ function renderActorSheetHopeControls(app, html, data) {
     ? (app.element instanceof jQuery ? app.element : $(app.element))
     : $html;
 
-  // Use header-right area to avoid overlaying custom ability score layouts.
-  const $target =
-    $root.find('.sheet-header .right').first().length
-      ? $root.find('.sheet-header .right').first()
-      : $root.find('.sheet-header').first();
-  if (!$target.length) return;
+  // Inject above the entire header so the bar sits above all stats.
+  const $sheetHeader = $root.find('.sheet-header').first();
+  if (!$sheetHeader.length) return;
 
   // Avoid duplicate injection on partial re-renders.
   $root.find('.hope-actions-sheet').remove();
@@ -154,7 +151,7 @@ function renderActorSheetHopeControls(app, html, data) {
     </div>`
   );
 
-  $target.append(control);
+  $sheetHeader.before(control);
 
   control.on('click', '.hope-actions-award', async () => {
     await awardActorHope(actor, 1, 'award');

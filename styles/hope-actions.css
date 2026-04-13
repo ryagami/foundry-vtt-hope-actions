@@ -1,13 +1,15 @@
 .hope-actions-sheet {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  margin: 0.25rem 0;
-  padding: 0.25rem 0.5rem;
-  border-radius: 999px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 0.4rem 0;
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
   border: 1px solid var(--color-border-light-primary, rgba(255, 255, 255, 0.25));
   background: var(--color-cool-5-25, rgba(0, 0, 0, 0.2));
-  max-width: 100%;
   position: static;
   float: none;
   clear: both;
