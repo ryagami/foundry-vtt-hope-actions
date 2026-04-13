@@ -369,7 +369,7 @@ async function promptHopeAction(actor, currentHope, message) {
           label: 'Reroll',
           callback: async (html) => {
             if (pendingAdd > 0) {
-              ui.notifications.warn('Finish or cancel adding before selecting reroll.');
+              ui.notifications.warn('Finish or cancel adding before selecting Reroll.');
               return false;
             }
             if (availableHope < 3) {
