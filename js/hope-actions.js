@@ -37,6 +37,7 @@ Hooks.once('ready', () => {
   game[HOPE_MODULE] = {};
 
   Hooks.on('renderActorSheet5eCharacter', renderActorSheetHopeControls);
+  Hooks.on('renderActorSheet5eCharacter2', renderActorSheetHopeControls);
   Hooks.on('renderChatMessage', renderHopeActionButton);
 });
 
@@ -106,6 +107,7 @@ function isNaturalOneMessage(message) {
 function renderActorSheetHopeControls(app, html, data) {
   const actor = app.actor;
   if (!actor) return;
+  const $html = html instanceof jQuery ? html : $(html);
 
   const currentHope = getActorHope(actor);
 
@@ -118,7 +120,7 @@ function renderActorSheetHopeControls(app, html, data) {
     </div>`
   );
 
-  html.find('.sheet-header').prepend(control);
+  $html.find('.sheet-header').prepend(control);
 
   control.on('click', '.hope-actions-award', async () => {
     await awardActorHope(actor, 1, 'award');
@@ -129,6 +131,7 @@ function renderActorSheetHopeControls(app, html, data) {
 async function renderHopeActionButton(message, html) {
   const flags = message.flags?.dnd5e?.roll ?? {};
   const actor = ChatMessage.getSpeakerActor(message.speaker);
+  const $html = html instanceof jQuery ? html : $(html);
 
   if (!actor) return;
   const canManageHope = actor.isOwner || game.user.isGM;
@@ -139,7 +142,7 @@ async function renderHopeActionButton(message, html) {
   const canAwardOnMessage = ['attack', 'save'].includes(flags.type);
   if (showAwardButtonFailedRolls && canAwardOnMessage && !alreadyAwardedOnMessage) {
     const awardButton = $(`<button class="hope-actions-award-chat button">Award Hope</button>`);
-    const awardArea = html.find('.card-buttons').length ? html.find('.card-buttons').first() : html;
+    const awardArea = $html.find('.card-buttons').length ? $html.find('.card-buttons').first() : $html;
     awardArea.append(awardButton);
 
     awardButton.on('click', async () => {
@@ -156,7 +159,7 @@ async function renderHopeActionButton(message, html) {
   if (getActorHope(actor) <= 0) return;
 
   const button = $(`<button class="hope-actions-chat button">${game.i18n.localize('HOPE.ChatButtonLabel')}</button>`);
-  const buttonArea = html.find('.card-buttons').length ? html.find('.card-buttons').first() : html;
+  const buttonArea = $html.find('.card-buttons').length ? $html.find('.card-buttons').first() : $html;
   buttonArea.append(button);
 
   button.on('click', async () => {
