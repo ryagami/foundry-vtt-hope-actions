@@ -231,6 +231,7 @@ async function renderHopeActionButton(message, html) {
   const supportedHopeRollTypes = ['abilityTest', 'attack', 'save'];
   if (!supportedHopeRollTypes.includes(rollType)) return;
   if (message.flags?.[HOPE_MODULE]?.spentHope) return;
+  if (message.flags?.[HOPE_MODULE]?.rerollHopeSpent) return;
   if (alreadyAwardedOnMessage) return;
   if (isNaturalOneMessage(message)) return;
   if (getActorHope(actor) <= 0) return;
@@ -264,6 +265,7 @@ async function promptHopeAction(actor, currentHope, message) {
     let pendingAdd = 0;
     let previewTotal = baseTotal;
     let rerollResult = null;
+    let rerollAlreadyApplied = false;
     let isRerolling = false;
 
     const $overlay = $(`
@@ -303,27 +305,49 @@ async function promptHopeAction(actor, currentHope, message) {
     $overlay.on('click', '[data-action="reroll"]', async () => {
       if (rerollResult) { ui.notifications.warn('Reroll is already selected.'); return; }
       if (isRerolling) { return; }
-      if (availableHope < 3) { ui.notifications.warn('Not enough Hope for a reroll.'); return; }
+      if (getActorHope(actor) < 3) { ui.notifications.warn('Not enough Hope for a reroll.'); return; }
       if (!baseFormula) { ui.notifications.warn('Unable to reroll this roll.'); return; }
       isRerolling = true;
       const $rerollButton = $overlay.find('[data-action="reroll"]');
       const previousLabel = $rerollButton.text();
+      let deductedForReroll = 0;
       $rerollButton.prop('disabled', true).text('Rerolling...');
 
-      availableHope -= 3;
-      refreshDialogState();
-
       try {
+        const spentNow = await spendActorHope(actor, 3);
+        deductedForReroll = spentNow;
+        if (spentNow < 3) {
+          if (spentNow > 0) await adjustActorHope(actor, spentNow);
+          deductedForReroll = 0;
+          throw new Error('Not enough Hope for reroll spend.');
+        }
+
+        availableHope = getActorHope(actor);
+        refreshDialogState();
+
         const roll = new Roll(baseFormula);
         rerollResult = typeof roll.evaluate === 'function'
           ? await roll.evaluate({async: true})
           : await roll.roll();
 
+        await rerollResult.toMessage({
+          speaker: ChatMessage.getSpeaker({actor}),
+          flavor: `${actor.name} spends 3 Hope to reroll.`
+        });
+
         previewTotal = Number(rerollResult.total ?? 0) + pendingAdd;
+        rerollAlreadyApplied = true;
+        await message.setFlag(HOPE_MODULE, 'rerollHopeSpent', true);
+        await message.setFlag(HOPE_MODULE, 'spentHope', true);
         refreshDialogState();
         $rerollButton.text('Rerolled').prop('disabled', true);
       } catch (err) {
-        availableHope += 3;
+        if (deductedForReroll > 0 && !rerollAlreadyApplied) {
+          await adjustActorHope(actor, deductedForReroll);
+        }
+        rerollResult = null;
+        rerollAlreadyApplied = false;
+        availableHope = getActorHope(actor);
         refreshDialogState();
         $rerollButton.text(previousLabel).prop('disabled', false);
         console.error('Hope Actions reroll failed:', err);
@@ -346,7 +370,13 @@ async function promptHopeAction(actor, currentHope, message) {
 
     $overlay.on('click', '[data-action="done"]', () => {
       if (rerollResult || pendingAdd > 0) {
-        closeDialog({ type: 'modify', rerollSelected: Boolean(rerollResult), reroll: rerollResult, addAmount: pendingAdd });
+        closeDialog({
+          type: 'modify',
+          rerollSelected: Boolean(rerollResult),
+          reroll: rerollResult,
+          rerollAlreadyApplied,
+          addAmount: pendingAdd
+        });
       } else {
         closeDialog(null);
       }
@@ -386,8 +416,10 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
   const formula = getMessageRollFormula(message);
   const baseTotal = getMessageRollTotal(message);
   const rerollSelected = Boolean(pendingAction.rerollSelected);
+  const rerollAlreadyApplied = Boolean(pendingAction.rerollAlreadyApplied);
   const addAmount = Number(pendingAction.addAmount) || 0;
-  const hopeCost = (rerollSelected ? 3 : 0) + addAmount;
+  const rerollCost = rerollSelected ? 3 : 0;
+  const hopeCost = (rerollSelected && !rerollAlreadyApplied ? 3 : 0) + addAmount;
 
   if (getActorHope(actor) < hopeCost) {
     ui.notifications.warn('You do not have enough Hope for this action.');
@@ -406,11 +438,12 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
 
   if (rerollSelected) {
     if (rollHasNaturalOne(reroll)) {
-      await adjustActorHope(actor, hopeCost);
+      await adjustActorHope(actor, hopeCost + (rerollAlreadyApplied ? rerollCost : 0));
       await reroll.toMessage({
         speaker: ChatMessage.getSpeaker({actor}),
         flavor: `${actor.name} rolled a natural 1 on the Hope reroll. Hope was refunded.`
       });
+      await message.setFlag(HOPE_MODULE, 'spentHope', true);
       return;
     }
     currentRollTotal = reroll.total;
@@ -422,13 +455,19 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
       speaker: ChatMessage.getSpeaker({actor}),
       content: `<p>${actor.name} spends ${hopeCost} Hope (+${addAmount}${rerollSelected ? ', including reroll' : ''}) and changes the result from ${currentRollTotal} to ${updatedTotal}.</p>`
     });
+    await message.setFlag(HOPE_MODULE, 'spentHope', true);
     return;
   }
 
   if (rerollSelected && reroll) {
+    if (rerollAlreadyApplied) {
+      await message.setFlag(HOPE_MODULE, 'spentHope', true);
+      return;
+    }
     await reroll.toMessage({
       speaker: ChatMessage.getSpeaker({actor}),
       flavor: `${actor.name} spends 3 Hope to reroll.`
     });
+    await message.setFlag(HOPE_MODULE, 'spentHope', true);
   }
 }
