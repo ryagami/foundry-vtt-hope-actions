@@ -11,7 +11,7 @@ A Foundry VTT module for D&D 5E that tracks a custom resource called Hope.
 - The GM can manually award Hope from the actor sheet.
 - Players can spend Hope on attack rolls, ability checks, and saving throws:
   - Spend any amount of Hope for +1 per Hope spent.
-  - Spend 3 Hope to reroll the next d20.
+  - Spend 3 Hope to reroll the current roll.
 
 ## Installation
 

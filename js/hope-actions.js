@@ -481,11 +481,11 @@ async function promptHopeAction(actor, currentHope, message) {
 }
 
 function getMessageRollFormula(message) {
-  return message.rolls?.[0]?.formula || message.data?.rolls?.[0]?.formula || message.data?.flags?.dnd5e?.roll?.formula || '';
+  return message?.rolls?.[0]?.formula || message?.data?.rolls?.[0]?.formula || message?.data?.flags?.dnd5e?.roll?.formula || '';
 }
 
 function getMessageRollTotal(message) {
-  return Number(message.rolls?.[0]?.total ?? message.data?.rolls?.[0]?.total ?? 0);
+  return Number(message?.rolls?.[0]?.total ?? message?.data?.rolls?.[0]?.total ?? 0);
 }
 
 async function applyHopeActionToMessage(actor, message, pendingAction) {
@@ -554,7 +554,7 @@ async function applyPendingHopeToOptions(actor, options = {}) {
       spentHope: 3
     };
     game[HOPE_MODULE].nextD20Reroll = true;
-    const content = `<p>${actor.name} spends 3 Hope to reroll the next d20.</p>`;
+    const content = `<p>${actor.name} spends 3 Hope to reroll this roll.</p>`;
     ChatMessage.create({speaker: ChatMessage.getSpeaker({actor: actor.id}), content});
   }
 
