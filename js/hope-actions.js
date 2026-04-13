@@ -302,6 +302,7 @@ async function promptHopeAction(actor, currentHope, message) {
     let previewTotal = baseTotal;
     let rerollResult = null;
     let rerollFinalTotal = null;
+    let rerollBreakdown = null;
     let rerollAlreadyApplied = false;
     let isRerolling = false;
 
@@ -367,12 +368,10 @@ async function promptHopeAction(actor, currentHope, message) {
           ? await roll.evaluate({async: true})
           : await roll.roll();
 
-        await rerollResult.toMessage({
-          speaker: ChatMessage.getSpeaker({actor}),
-          flavor: `${actor.name} spends 3 Hope to reroll.`
-        });
+        rerollBreakdown = getRerollBreakdown(d20Context, rerollResult.total);
+        await postHopeRerollChatMessage(actor, rerollBreakdown);
 
-        rerollFinalTotal = getRerolledD20Total(d20Context, rerollResult.total);
+        rerollFinalTotal = rerollBreakdown.finalTotal;
         previewTotal = Number(rerollFinalTotal ?? baseTotal) + pendingAdd;
         rerollAlreadyApplied = true;
         await message.setFlag(HOPE_MODULE, 'rerollHopeSpent', true);
@@ -385,6 +384,7 @@ async function promptHopeAction(actor, currentHope, message) {
         }
         rerollResult = null;
         rerollFinalTotal = null;
+        rerollBreakdown = null;
         rerollAlreadyApplied = false;
         availableHope = getActorHope(actor);
         refreshDialogState();
@@ -414,6 +414,7 @@ async function promptHopeAction(actor, currentHope, message) {
           rerollSelected: Boolean(rerollResult),
           reroll: rerollResult,
           rerollFinalTotal,
+          rerollBreakdown,
           rerollAlreadyApplied,
           addAmount: pendingAdd
         });
@@ -486,8 +487,21 @@ function getMessageD20Context(message) {
 }
 
 function getRerolledD20Total(context, rerollDieTotal) {
+  return getRerollBreakdown(context, rerollDieTotal).finalTotal;
+}
+
+function getRerollBreakdown(context, rerollDieTotal) {
   const rerollDie = Number(rerollDieTotal ?? 0);
-  if (!context) return rerollDie;
+  if (!context) {
+    return {
+      mode: 'normal',
+      rerollDie,
+      preservedValue: null,
+      modifierTotal: 0,
+      selectedValue: rerollDie,
+      finalTotal: rerollDie
+    };
+  }
 
   let selectedValue = rerollDie;
   if (context.mode === 'advantage' && Number.isFinite(context.preservedValue)) {
@@ -496,7 +510,56 @@ function getRerolledD20Total(context, rerollDieTotal) {
     selectedValue = Math.min(rerollDie, context.preservedValue);
   }
 
-  return Number(context.modifierTotal ?? 0) + selectedValue;
+  return {
+    mode: context.mode,
+    rerollDie,
+    preservedValue: Number.isFinite(context.preservedValue) ? context.preservedValue : null,
+    modifierTotal: Number(context.modifierTotal ?? 0),
+    selectedValue,
+    finalTotal: Number(context.modifierTotal ?? 0) + selectedValue
+  };
+}
+
+function formatSignedNumber(value) {
+  const number = Number(value ?? 0);
+  return number >= 0 ? `+${number}` : `${number}`;
+}
+
+async function postHopeRerollChatMessage(actor, breakdown) {
+  const modeLabel = breakdown.mode === 'advantage'
+    ? 'advantage replacement'
+    : breakdown.mode === 'disadvantage'
+      ? 'disadvantage replacement'
+      : 'reroll';
+
+  const preservedLine = Number.isFinite(breakdown.preservedValue)
+    ? `<p>Preserved die: <strong>${breakdown.preservedValue}</strong></p>`
+    : '';
+
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({actor}),
+    content: `
+      <div class="hope-actions-result-card">
+        <p><strong>${actor.name}</strong> spends 3 Hope for a ${modeLabel}.</p>
+        <p>New d20: <strong>${breakdown.rerollDie}</strong></p>
+        ${preservedLine}
+        <p>Roll modifiers: <strong>${formatSignedNumber(breakdown.modifierTotal)}</strong></p>
+        <p>Reroll total: <strong>${breakdown.finalTotal}</strong></p>
+      </div>
+    `
+  });
+}
+
+async function postHopeFinalResultMessage(actor, finalTotal, details) {
+  const parts = [];
+  if (details.rerollSelected) parts.push(`reroll total ${details.rerollTotal}`);
+  if (details.addAmount > 0) parts.push(`Hope bonus +${details.addAmount}`);
+
+  const detailText = parts.length ? ` (${parts.join(', ')})` : '';
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({actor}),
+    content: `<p><strong>${actor.name}</strong> confirms the final Hope result: <strong>${finalTotal}</strong>${detailText}.</p>`
+  });
 }
 
 function getMessageRollTotal(message) {
@@ -518,6 +581,7 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
   const baseTotal = getMessageRollTotal(message);
   const rerollSelected = Boolean(pendingAction.rerollSelected);
   const rerollAlreadyApplied = Boolean(pendingAction.rerollAlreadyApplied);
+  const rerollBreakdown = pendingAction.rerollBreakdown ?? null;
   const rerollFinalTotal = Number(pendingAction.rerollFinalTotal ?? baseTotal);
   const addAmount = Number(pendingAction.addAmount) || 0;
   const rerollCost = rerollSelected ? 3 : 0;
@@ -541,9 +605,9 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
   if (rerollSelected) {
     if (rollHasNaturalOne(reroll)) {
       await adjustActorHope(actor, hopeCost + (rerollAlreadyApplied ? rerollCost : 0));
-      await reroll.toMessage({
+      await ChatMessage.create({
         speaker: ChatMessage.getSpeaker({actor}),
-        flavor: `${actor.name} rolled a natural 1 on the Hope reroll. Hope was refunded.`
+        content: `<p><strong>${actor.name}</strong> rolled a natural 1 on the Hope reroll. Hope was refunded and the original result remains <strong>${baseTotal}</strong>.</p>`
       });
       await message.setFlag(HOPE_MODULE, 'spentHope', true);
       return;
@@ -558,18 +622,32 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
       speaker: ChatMessage.getSpeaker({actor}),
       content: `<p>${actor.name} spends ${displayHopeCost} Hope (+${addAmount}${rerollSelected ? ', including reroll' : ''}) and changes the result from ${currentRollTotal} to ${updatedTotal}.</p>`
     });
+    await postHopeFinalResultMessage(actor, updatedTotal, {
+      rerollSelected,
+      rerollTotal: currentRollTotal,
+      addAmount
+    });
     await message.setFlag(HOPE_MODULE, 'spentHope', true);
     return;
   }
 
   if (rerollSelected && reroll) {
     if (rerollAlreadyApplied) {
+      await postHopeFinalResultMessage(actor, currentRollTotal, {
+        rerollSelected,
+        rerollTotal: currentRollTotal,
+        addAmount: 0
+      });
       await message.setFlag(HOPE_MODULE, 'spentHope', true);
       return;
     }
-    await reroll.toMessage({
-      speaker: ChatMessage.getSpeaker({actor}),
-      flavor: `${actor.name} spends 3 Hope to reroll.`
+    if (rerollBreakdown) {
+      await postHopeRerollChatMessage(actor, rerollBreakdown);
+    }
+    await postHopeFinalResultMessage(actor, currentRollTotal, {
+      rerollSelected,
+      rerollTotal: currentRollTotal,
+      addAmount: 0
     });
     await message.setFlag(HOPE_MODULE, 'spentHope', true);
   }
