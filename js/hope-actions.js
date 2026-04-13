@@ -408,6 +408,10 @@ async function promptHopeAction(actor, currentHope, message) {
     });
 
     $overlay.on('click', '[data-action="done"]', () => {
+      const $doneButton = $overlay.find('[data-action="done"]');
+      if ($doneButton.prop('disabled')) return;
+      $doneButton.prop('disabled', true);
+
       if (rerollResult || pendingAdd > 0) {
         closeDialog({
           type: 'modify',
@@ -573,6 +577,10 @@ function rollHasNaturalOne(roll) {
 }
 
 async function applyHopeActionToMessage(actor, message, pendingAction) {
+  if (message.flags?.[HOPE_MODULE]?.finalResultConfirmed) {
+    return;
+  }
+
   if (message.flags?.[HOPE_MODULE]?.failureHopeAwarded || message.flags?.[HOPE_MODULE]?.hopeAwarded) {
     ui.notifications.warn('This roll already granted Hope and cannot be modified with Hope.');
     return;
@@ -609,6 +617,7 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
         speaker: ChatMessage.getSpeaker({actor}),
         content: `<p><strong>${actor.name}</strong> rolled a natural 1 on the Hope reroll. Hope was refunded and the original result remains <strong>${baseTotal}</strong>.</p>`
       });
+      await message.setFlag(HOPE_MODULE, 'finalResultConfirmed', true);
       await message.setFlag(HOPE_MODULE, 'spentHope', true);
       return;
     }
@@ -627,6 +636,7 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
       rerollTotal: currentRollTotal,
       addAmount
     });
+    await message.setFlag(HOPE_MODULE, 'finalResultConfirmed', true);
     await message.setFlag(HOPE_MODULE, 'spentHope', true);
     return;
   }
@@ -638,6 +648,7 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
         rerollTotal: currentRollTotal,
         addAmount: 0
       });
+      await message.setFlag(HOPE_MODULE, 'finalResultConfirmed', true);
       await message.setFlag(HOPE_MODULE, 'spentHope', true);
       return;
     }
@@ -649,6 +660,7 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
       rerollTotal: currentRollTotal,
       addAmount: 0
     });
+    await message.setFlag(HOPE_MODULE, 'finalResultConfirmed', true);
     await message.setFlag(HOPE_MODULE, 'spentHope', true);
   }
 }
