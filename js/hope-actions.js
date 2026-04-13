@@ -255,7 +255,7 @@ async function renderHopeActionButton(message, html) {
 
 async function promptHopeAction(actor, currentHope, message) {
   const baseTotal = getMessageRollTotal(message);
-  const baseFormula = getMessageRollFormula(message);
+  const d20Context = getMessageD20Context(message);
   const maxHope = game.settings.get(HOPE_MODULE, 'maxHope');
 
   // Use a manually managed overlay instead of new Dialog() because Foundry V13's
@@ -265,6 +265,7 @@ async function promptHopeAction(actor, currentHope, message) {
     let pendingAdd = 0;
     let previewTotal = baseTotal;
     let rerollResult = null;
+    let rerollFinalTotal = null;
     let rerollAlreadyApplied = false;
     let isRerolling = false;
 
@@ -306,7 +307,7 @@ async function promptHopeAction(actor, currentHope, message) {
       if (rerollResult) { ui.notifications.warn('Reroll is already selected.'); return; }
       if (isRerolling) { return; }
       if (getActorHope(actor) < 3) { ui.notifications.warn('Not enough Hope for a reroll.'); return; }
-      if (!baseFormula) { ui.notifications.warn('Unable to reroll this roll.'); return; }
+      if (!d20Context) { ui.notifications.warn('Unable to reroll this roll.'); return; }
       isRerolling = true;
       const $rerollButton = $overlay.find('[data-action="reroll"]');
       const previousLabel = $rerollButton.text();
@@ -325,7 +326,7 @@ async function promptHopeAction(actor, currentHope, message) {
         availableHope = getActorHope(actor);
         refreshDialogState();
 
-        const roll = new Roll(baseFormula);
+        const roll = new Roll('1d20');
         rerollResult = typeof roll.evaluate === 'function'
           ? await roll.evaluate({async: true})
           : await roll.roll();
@@ -335,7 +336,8 @@ async function promptHopeAction(actor, currentHope, message) {
           flavor: `${actor.name} spends 3 Hope to reroll.`
         });
 
-        previewTotal = Number(rerollResult.total ?? 0) + pendingAdd;
+        rerollFinalTotal = getRerolledD20Total(d20Context, rerollResult.total);
+        previewTotal = Number(rerollFinalTotal ?? baseTotal) + pendingAdd;
         rerollAlreadyApplied = true;
         await message.setFlag(HOPE_MODULE, 'rerollHopeSpent', true);
         await message.setFlag(HOPE_MODULE, 'spentHope', true);
@@ -346,6 +348,7 @@ async function promptHopeAction(actor, currentHope, message) {
           await adjustActorHope(actor, deductedForReroll);
         }
         rerollResult = null;
+        rerollFinalTotal = null;
         rerollAlreadyApplied = false;
         availableHope = getActorHope(actor);
         refreshDialogState();
@@ -363,7 +366,7 @@ async function promptHopeAction(actor, currentHope, message) {
       if (amount > availableHope) { ui.notifications.warn('You cannot spend more Hope than you have.'); return; }
       availableHope -= amount;
       pendingAdd += amount;
-      const currentBase = rerollResult ? rerollResult.total : baseTotal;
+      const currentBase = rerollResult ? Number(rerollFinalTotal ?? baseTotal) : baseTotal;
       previewTotal = currentBase + pendingAdd;
       refreshDialogState();
     });
@@ -374,6 +377,7 @@ async function promptHopeAction(actor, currentHope, message) {
           type: 'modify',
           rerollSelected: Boolean(rerollResult),
           reroll: rerollResult,
+          rerollFinalTotal,
           rerollAlreadyApplied,
           addAmount: pendingAdd
         });
@@ -397,6 +401,68 @@ function getMessageRollFormula(message) {
   return message?.rolls?.[0]?.formula || '';
 }
 
+function getMessageD20Context(message) {
+  const roll = message?.rolls?.[0];
+  if (!roll) return null;
+
+  const d20 = roll.dice?.find(die => die.faces === 20 && Array.isArray(die.results) && die.results.length > 0);
+  if (!d20) return null;
+
+  const allValues = d20.results
+    .map(result => Number(result?.result ?? 0))
+    .filter(value => Number.isFinite(value));
+  if (!allValues.length) return null;
+
+  const activeValues = d20.results
+    .filter(result => result?.active ?? true)
+    .map(result => Number(result?.result ?? 0))
+    .filter(value => Number.isFinite(value));
+
+  const selectedValue = activeValues.length ? activeValues[0] : allValues[0];
+  const highest = Math.max(...allValues);
+  const lowest = Math.min(...allValues);
+  const formula = String(roll.formula ?? '').toLowerCase();
+
+  let mode = 'normal';
+  if (allValues.length >= 2) {
+    if (selectedValue === highest && selectedValue !== lowest) mode = 'advantage';
+    else if (selectedValue === lowest && selectedValue !== highest) mode = 'disadvantage';
+    else if (formula.includes('kh')) mode = 'advantage';
+    else if (formula.includes('kl')) mode = 'disadvantage';
+  }
+
+  const preservedValue = mode === 'advantage'
+    ? lowest
+    : mode === 'disadvantage'
+      ? highest
+      : null;
+
+  const total = Number(roll.total ?? 0);
+  const modifierTotal = total - selectedValue;
+
+  return {
+    mode,
+    selectedValue,
+    preservedValue,
+    modifierTotal,
+    baseTotal: total
+  };
+}
+
+function getRerolledD20Total(context, rerollDieTotal) {
+  const rerollDie = Number(rerollDieTotal ?? 0);
+  if (!context) return rerollDie;
+
+  let selectedValue = rerollDie;
+  if (context.mode === 'advantage' && Number.isFinite(context.preservedValue)) {
+    selectedValue = Math.max(rerollDie, context.preservedValue);
+  } else if (context.mode === 'disadvantage' && Number.isFinite(context.preservedValue)) {
+    selectedValue = Math.min(rerollDie, context.preservedValue);
+  }
+
+  return Number(context.modifierTotal ?? 0) + selectedValue;
+}
+
 function getMessageRollTotal(message) {
   return Number(message?.rolls?.[0]?.total ?? 0);
 }
@@ -413,10 +479,10 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
     return;
   }
 
-  const formula = getMessageRollFormula(message);
   const baseTotal = getMessageRollTotal(message);
   const rerollSelected = Boolean(pendingAction.rerollSelected);
   const rerollAlreadyApplied = Boolean(pendingAction.rerollAlreadyApplied);
+  const rerollFinalTotal = Number(pendingAction.rerollFinalTotal ?? baseTotal);
   const addAmount = Number(pendingAction.addAmount) || 0;
   const rerollCost = rerollSelected ? 3 : 0;
   const hopeCost = (rerollSelected && !rerollAlreadyApplied ? 3 : 0) + addAmount;
@@ -426,8 +492,8 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
     return;
   }
 
-  if (rerollSelected && !formula) {
-    ui.notifications.warn('Hope Actions could not determine the original roll formula.');
+  if (rerollSelected && !pendingAction.reroll) {
+    ui.notifications.warn('Hope Actions could not determine a d20 to reroll.');
     return;
   }
 
@@ -446,14 +512,15 @@ async function applyHopeActionToMessage(actor, message, pendingAction) {
       await message.setFlag(HOPE_MODULE, 'spentHope', true);
       return;
     }
-    currentRollTotal = reroll.total;
+    currentRollTotal = rerollFinalTotal;
   }
 
   if (addAmount > 0) {
+    const displayHopeCost = hopeCost + (rerollSelected && rerollAlreadyApplied ? rerollCost : 0);
     const updatedTotal = currentRollTotal + addAmount;
     await ChatMessage.create({
       speaker: ChatMessage.getSpeaker({actor}),
-      content: `<p>${actor.name} spends ${hopeCost} Hope (+${addAmount}${rerollSelected ? ', including reroll' : ''}) and changes the result from ${currentRollTotal} to ${updatedTotal}.</p>`
+      content: `<p>${actor.name} spends ${displayHopeCost} Hope (+${addAmount}${rerollSelected ? ', including reroll' : ''}) and changes the result from ${currentRollTotal} to ${updatedTotal}.</p>`
     });
     await message.setFlag(HOPE_MODULE, 'spentHope', true);
     return;
