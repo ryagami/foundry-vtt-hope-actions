@@ -224,6 +224,7 @@ async function promptHopeAction(actor, currentHope, message) {
     let pendingAdd = 0;
     let previewTotal = baseTotal;
     let rerollResult = null;
+    let isRerolling = false;
 
     const $overlay = $(`
       <div id="hope-spend-overlay">
@@ -252,16 +253,44 @@ async function promptHopeAction(actor, currentHope, message) {
 
     const closeDialog = (result) => { $overlay.remove(); resolve(result); };
 
+    const refreshDialogState = () => {
+      $overlay.find('#hope-current-amount').text(availableHope);
+      $overlay.find('#hope-pending-amount').text(pendingAdd);
+      $overlay.find('#hope-preview').text(previewTotal);
+      $overlay.find('#hope-add').attr('max', Math.max(availableHope, 0)).val(1);
+    };
+
     $overlay.on('click', '[data-action="reroll"]', async () => {
       if (rerollResult) { ui.notifications.warn('Reroll is already selected.'); return; }
+      if (isRerolling) { return; }
       if (availableHope < 3) { ui.notifications.warn('Not enough Hope for a reroll.'); return; }
       if (!baseFormula) { ui.notifications.warn('Unable to reroll this roll.'); return; }
+      isRerolling = true;
+      const $rerollButton = $overlay.find('[data-action="reroll"]');
+      const previousLabel = $rerollButton.text();
+      $rerollButton.prop('disabled', true).text('Rerolling...');
+
       availableHope -= 3;
-      rerollResult = await new Roll(baseFormula).roll();
-      previewTotal = rerollResult.total + pendingAdd;
-      $overlay.find('#hope-current-amount').text(availableHope);
-      $overlay.find('#hope-add').attr('max', availableHope).val(1);
-      $overlay.find('#hope-preview').text(previewTotal);
+      refreshDialogState();
+
+      try {
+        const roll = new Roll(baseFormula);
+        rerollResult = typeof roll.evaluate === 'function'
+          ? await roll.evaluate({async: true})
+          : await roll.roll();
+
+        previewTotal = Number(rerollResult.total ?? 0) + pendingAdd;
+        refreshDialogState();
+        $rerollButton.text('Rerolled').prop('disabled', true);
+      } catch (err) {
+        availableHope += 3;
+        refreshDialogState();
+        $rerollButton.text(previousLabel).prop('disabled', false);
+        console.error('Hope Actions reroll failed:', err);
+        ui.notifications.error('Reroll failed. Please try again.');
+      } finally {
+        isRerolling = false;
+      }
     });
 
     $overlay.on('click', '[data-action="add"]', () => {
@@ -272,10 +301,7 @@ async function promptHopeAction(actor, currentHope, message) {
       pendingAdd += amount;
       const currentBase = rerollResult ? rerollResult.total : baseTotal;
       previewTotal = currentBase + pendingAdd;
-      $overlay.find('#hope-current-amount').text(availableHope);
-      $overlay.find('#hope-pending-amount').text(pendingAdd);
-      $overlay.find('#hope-preview').text(previewTotal);
-      $overlay.find('#hope-add').attr('max', availableHope).val(1);
+      refreshDialogState();
     });
 
     $overlay.on('click', '[data-action="done"]', () => {
