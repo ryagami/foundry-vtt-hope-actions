@@ -151,7 +151,7 @@ function renderActorSheetHopeControls(app, html, data) {
     </div>`
   );
 
-  $sheetHeader.before(control);
+  $sheetHeader.after(control);
 
   control.on('click', '.hope-actions-award', async () => {
     await awardActorHope(actor, 1, 'award');
