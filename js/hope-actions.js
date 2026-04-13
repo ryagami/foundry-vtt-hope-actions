@@ -38,7 +38,31 @@ Hooks.once('ready', () => {
 
   Hooks.on('renderCharacterActorSheet', renderActorSheetHopeControls);
   Hooks.on('dnd5e.renderChatMessage', renderHopeActionButton);
+  Hooks.on('renderChatMessage', renderHopeActionButton);
 });
+
+function getMessageActor(message) {
+  return message.getAssociatedActor?.()
+    ?? ChatMessage.getSpeakerActor(message.speaker)
+    ?? game.actors.get(message.speaker?.actor)
+    ?? null;
+}
+
+function normalizeRollType(type) {
+  const value = String(type ?? '').toLowerCase();
+  if (['abilitytest', 'abilitycheck', 'check', 'ability', 'skill'].includes(value)) return 'abilityTest';
+  if (['save', 'savingthrow'].includes(value)) return 'save';
+  if (value === 'attack') return 'attack';
+  return '';
+}
+
+function getMessageRollType(message) {
+  const rawType = message.flags?.dnd5e?.roll?.type
+    ?? message.getFlag?.('dnd5e', 'roll.type')
+    ?? message.rolls?.[0]?.options?.type
+    ?? message.rolls?.[0]?.options?.dnd5e?.type;
+  return normalizeRollType(rawType);
+}
 
 function clampHope(value) {
   const maxHope = game.settings.get(HOPE_MODULE, 'maxHope');
@@ -146,16 +170,18 @@ function renderActorSheetHopeControls(app, html, data) {
 
 async function renderHopeActionButton(message, html) {
   const flags = message.flags?.dnd5e?.roll ?? {};
-  const actor = ChatMessage.getSpeakerActor(message.speaker);
+  const rollType = getMessageRollType(message) || normalizeRollType(flags.type);
+  const actor = getMessageActor(message);
   const $html = html instanceof jQuery ? html : $(html);
 
   if (!actor) return;
+  if ($html.find('.hope-actions-chat, .hope-actions-award-chat').length) return;
   const canManageHope = actor.isOwner || game.user.isGM;
   if (!canManageHope) return;
 
   const showAwardButtonFailedRolls = game.settings.get(HOPE_MODULE, 'showAwardButtonFailedRolls');
   const alreadyAwardedOnMessage = message.flags?.[HOPE_MODULE]?.failureHopeAwarded;
-  const canAwardOnMessage = ['attack', 'save'].includes(flags.type);
+  const canAwardOnMessage = ['attack', 'save'].includes(rollType);
   if (showAwardButtonFailedRolls && canAwardOnMessage && !alreadyAwardedOnMessage) {
     const awardButton = $(`<button class="hope-actions-award-chat button">Award Hope</button>`);
     const awardArea = $html.find('.card-buttons').first();
@@ -174,7 +200,7 @@ async function renderHopeActionButton(message, html) {
   }
 
   const supportedHopeRollTypes = ['abilityTest', 'attack', 'save'];
-  if (!supportedHopeRollTypes.includes(flags.type)) return;
+  if (!supportedHopeRollTypes.includes(rollType)) return;
   if (message.flags?.[HOPE_MODULE]?.spentHope) return;
   if (isNaturalOneMessage(message)) return;
   if (getActorHope(actor) <= 0) return;
